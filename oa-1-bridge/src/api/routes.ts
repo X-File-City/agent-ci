@@ -6,7 +6,6 @@ import { SECRETS } from "../secrets";
 
 export const apiRoutes = [
   route("/webhook", { post: handleWebhook }),
-  route("/heartbeat", { post: handleHeartbeat }),
   route("/jobs", { get: handleJobs }),
 ];
 
@@ -96,35 +95,28 @@ async function handleWebhook({ request }: { request: Request }): Promise<Respons
   return new Response("Job queued locally", { status: 200 });
 }
 
-async function handleHeartbeat({ request }: { request: Request }): Promise<Response> {
-  const { runnerId, status } = await request.json() as any;
 
-  if (!runnerId) {
-    return new Response("Missing runnerId", { status: 400 });
-  }
-
-  await env.OA1_BRIDGE_PRESENCE.put(`presence@${runnerId}`, JSON.stringify({ status, lastSeen: Date.now() }), {
-    expirationTtl: 60, // 60 seconds TTL
-  });
-
-  return new Response("Heartbeat received", { status: 200 });
-}
 
 async function handleJobs({ request }: { request: Request }): Promise<Response> {
   const url = new URL(request.url);
-  const runnerId = url.searchParams.get("runnerId");
+  const username = url.searchParams.get("username");
 
-  if (!runnerId) {
-    return new Response("Missing runnerId", { status: 400 });
+  if (!username) {
+    return new Response("Missing username", { status: 400 });
   }
 
+  // Update presence
+  await env.OA1_BRIDGE_PRESENCE.put(`presence@${username}`, JSON.stringify({ status: "online", lastSeen: Date.now() }), {
+    expirationTtl: 60, // 60 seconds TTL
+  });
+
   // Get and Clear for MVP
-  const jobsJson = await env.OA1_BRIDGE_JOBS.get(`queued_jobs@${runnerId}`);
+  const jobsJson = await env.OA1_BRIDGE_JOBS.get(`queued_jobs@${username}`);
   const jobs = jobsJson ? JSON.parse(jobsJson) : [];
 
   if (jobs.length > 0) {
     // Clear the queue
-    await env.OA1_BRIDGE_JOBS.put(`queued_jobs@${runnerId}`, JSON.stringify([]));
+    await env.OA1_BRIDGE_JOBS.put(`queued_jobs@${username}`, JSON.stringify([]));
   }
 
   return new Response(JSON.stringify(jobs), {
