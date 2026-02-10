@@ -1,4 +1,5 @@
 import { Job } from "./types";
+import { config } from "./config";
 import Docker from "dockerode";
 
 const docker = new Docker({ socketPath: "/var/run/docker.sock" });
@@ -34,16 +35,27 @@ export async function executeJob(job: Job): Promise<void> {
     // 1. Ensure image exists
     await ensureImageExists();
 
-    // 2. Prepare Environment
-    const envVars = Object.entries(job.env || {}).map(
-      ([key, value]) => `${key}=${value}`
-    );
+    // 2. Prepare Environment for Direct GitHub Pull
+    const envVars = [
+      `GITHUB_JOB_ID=${job.githubJobId}`,
+      `GITHUB_REPO=${job.githubRepo}`,
+      `GITHUB_TOKEN=${job.githubToken}`,
+      `GITHUB_API_URL=https://api.github.com`,
+    ];
 
     // 3. Create and Start Container
+    // The command pulls its own spec directly from GitHub.
     console.log(`[Executor] Creating container...`);
     const container = await docker.createContainer({
       Image: IMAGE,
-      Cmd: ["/bin/sh", "-c", "echo 'Hello from container! Environment check:'; env"],
+      Cmd: [
+        "/bin/sh",
+        "-c",
+        `echo "[Worker] Fetching job details from GitHub..." && \\
+         curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \\
+         "$GITHUB_API_URL/repos/$GITHUB_REPO/actions/jobs/$GITHUB_JOB_ID" | tee /tmp/job_details.json && \\
+         echo "\n[Worker] GitHub job details retrieved successfully."`
+      ],
       Env: envVars,
       Tty: false,
     });

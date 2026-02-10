@@ -3,6 +3,7 @@ import { z } from "zod";
 
 const secretsSchema = z.object({
   GITHUB_WEBHOOK_SECRET: z.string().min(1, "GITHUB_WEBHOOK_SECRET is required"),
+  GITHUB_TOKEN: z.string().min(1, "GITHUB_TOKEN is required"),
 });
 
 export type Secrets = z.infer<typeof secretsSchema>;

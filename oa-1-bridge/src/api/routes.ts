@@ -66,15 +66,7 @@ async function handleWebhook({ request }: { request: Request }): Promise<Respons
   };
 
   await env.OA1_BRIDGE_JOBS.put(`webhook@${deliveryId}`, JSON.stringify(webhookData));
-
-  // Maintain a list of recent webhooks for the UI
-  const recentWebhooksJson = await env.OA1_BRIDGE_JOBS.get("recent_webhooks");
-  const recentWebhooks = recentWebhooksJson ? JSON.parse(recentWebhooksJson) : [];
-  recentWebhooks.unshift(deliveryId);
-  // Keep only the last 50
-  if (recentWebhooks.length > 50) recentWebhooks.pop();
-  await env.OA1_BRIDGE_JOBS.put("recent_webhooks", JSON.stringify(recentWebhooks));
-
+  
   // 5. Identify User & Check Presence
   const presence = await env.OA1_BRIDGE_PRESENCE.get(`presence@${username}`);
   
@@ -85,10 +77,16 @@ async function handleWebhook({ request }: { request: Request }): Promise<Respons
     return new Response("User offline, fallback triggered", { status: 200 });
   }
 
-  // 6. Queue Job for Runner
+  // 6. Queue Job for Runner (GitHub metadata)
   const jobsJson = await env.OA1_BRIDGE_JOBS.get(`queued_jobs@${username}`);
   const jobs = jobsJson ? JSON.parse(jobsJson) : [];
-  jobs.push({ ...payload, deliveryId }); // Include deliveryId in job
+  
+  jobs.push({ 
+    deliveryId,
+    githubJobId: payload.workflow_job.id,
+    githubRepo: payload.repository.full_name,
+    githubToken: SECRETS.GITHUB_TOKEN, // Pass the token to the runner -> container
+  }); 
   
   await env.OA1_BRIDGE_JOBS.put(`queued_jobs@${username}`, JSON.stringify(jobs));
 
