@@ -1,0 +1,4 @@
+packages:
+  - 'bridge'
+  - 'runner'
+  - 'dtu/github-actions'

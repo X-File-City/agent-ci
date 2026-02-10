@@ -4,32 +4,28 @@ This is a TypeScript package that provides tools and mocks to simulate GitHub Ac
 
 ## Purpose
 
-The DTU allows developers to run and test the `oa-1-bridge` and `oa-1-runner` integration without deploying to GitHub. It mirrors GitHub's REST API and handles webhook simulation.
+The DTU allows developers to run and test the `bridge` and `runner` integration without deploying to GitHub. It mirrors GitHub's REST API and handles webhook simulation.
 
 ## Setup
 
-1.  **Install Dependencies**:
-    ```bash
-    cd dtu/github-actions
-    pnpm install
-    ```
-2.  **Environment Variables**:
-    Create a `.env` file in this directory or set them in your shell:
-    - `BRIDGE_URL`: The URL of your local bridge (e.g., `http://localhost:8910`).
-    - `GITHUB_WEBHOOK_SECRET`: The secret used to sign webhooks.
-    - `DTU_URL`: The URL where this mock server will run (default: `http://localhost:3333`).
+This package is part of a `pnpm` workspace.
+
+1.  **Environment Variables**:
+    Symlinked to the root `.env`.
 
 ## Usage
 
+From the project root:
+
 1.  **Start the Mock Server**:
     ```bash
-    pnpm run server:dev
+    pnpm --filter dtu/github-actions server:dev
     ```
 2.  **Run Simulation**:
     ```bash
-    pnpm run simulate:dev <event_name>
+    pnpm --filter dtu/github-actions simulate:dev <event_name>
     ```
-    (e.g., `pnpm run simulate:dev push`)
+    (e.g., `pnpm --filter dtu/github-actions simulate:dev push`)
 
 ## Structure
 

@@ -1,0 +1,7 @@
+{
+  "name": "oa-1",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm -r dev"
+  }
+}

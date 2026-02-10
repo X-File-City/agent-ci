@@ -1,6 +1,6 @@
-# OA-1 Bridge
+# Bridge
 
-The **OA-1 Bridge** is a Cloudflare Worker that acts as a secure traffic controller between GitHub Actions and your local runner.
+The **Bridge** is a Cloudflare Worker that acts as a secure traffic controller between GitHub Actions and your local runner.
 
 ## Architecture
 
@@ -19,21 +19,19 @@ This service is "stateless" but uses Cloudflare KV for presence and job queuing.
 
 ## Development
 
-1. **Install Dependencies**:
-   ```bash
-   npm install
-   ```
+This package is part of a `pnpm` workspace.
+
+1. **Environment Variables**:
+   This package symlinks `.env` and `.dev.vars` to the root of the project. Ensure you have configured the root `.env` file.
 
 2. **Run Locally**:
+   From the project root:
    ```bash
-   npm run dev
+   pnpm --filter bridge dev
    ```
-
-3. **Simulate Webhook (Testing)**:
-   You can use `curl` to simulate a GitHub webhook targeting your local development server.
 
 ## Deploy
 
 ```bash
-npm run release
+pnpm --filter bridge release
 ```
