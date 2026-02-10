@@ -1,14 +1,11 @@
-
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import crypto from 'node:crypto';
+import { config } from './config.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
-const BRIDGE_URL = process.env.BRIDGE_URL || 'http://localhost:8910';
-const WEBHOOK_SECRET = process.env.GITHUB_WEBHOOK_SECRET || 'dtu-sandbox-secret';
 
 async function signPayload(payload: string, secret: string): Promise<string> {
   const hmac = crypto.createHmac('sha256', secret);
@@ -19,10 +16,11 @@ async function signPayload(payload: string, secret: string): Promise<string> {
 async function main() {
   const event = process.argv[2] || 'workflow_job';
 
-  const payloadPath = path.join(__dirname, 'events', `${event}.json`);
+  // Events are in ../events relative to src/
+  const payloadPath = path.join(__dirname, '..', 'events', `${event}.json`);
 
   if (!fs.existsSync(payloadPath)) {
-    const availableEvents = fs.readdirSync(path.join(__dirname, 'events'))
+    const availableEvents = fs.readdirSync(path.join(__dirname, '..', 'events'))
       .map(f => f.replace('.json', ''));
     console.error(`Payload not found: ${payloadPath}`);
     console.error(`Available events: ${availableEvents.join(', ')}`);
@@ -33,14 +31,33 @@ async function main() {
   const payload = JSON.parse(rawPayload);
   const deliveryId = crypto.randomUUID();
 
+  // 1. Seeding Logic for DTU
+  if (event === 'workflow_job' && payload.workflow_job) {
+    console.log(`[DTU] Seeding mock server at ${config.DTU_URL}...`);
+    try {
+      const seedResponse = await fetch(`${config.DTU_URL}/_dtu/seed`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload.workflow_job),
+      });
+      if (!seedResponse.ok) {
+        console.warn(`[DTU] Warning: Failed to seed mock server: ${seedResponse.status} ${seedResponse.statusText}`);
+      } else {
+        console.log('[DTU] Mock server seeded successfully.');
+      }
+    } catch (err) {
+      console.warn(`[DTU] Warning: Could not connect to mock server at ${config.DTU_URL}. Is it running?`);
+    }
+  }
+
   console.log(`[DTU] Simulating "${event}" event...`);
   console.log(`[DTU] Delivery ID: ${deliveryId}`);
-  console.log(`[DTU] Target Bridge: ${BRIDGE_URL}`);
+  console.log(`[DTU] Target Bridge: ${config.BRIDGE_URL}`);
 
-  const signature = await signPayload(rawPayload, WEBHOOK_SECRET);
+  const signature = await signPayload(rawPayload, config.GITHUB_WEBHOOK_SECRET);
 
   try {
-    const response = await fetch(`${BRIDGE_URL}/webhook`, {
+    const response = await fetch(`${config.BRIDGE_URL}/webhook`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -64,7 +81,7 @@ async function main() {
 
   } catch (error: any) {
     if (error.code === 'ECONNREFUSED') {
-      console.error(`[DTU] Error: Could not connect to Bridge at ${BRIDGE_URL}. Is it running?`);
+      console.error(`[DTU] Error: Could not connect to Bridge at ${config.BRIDGE_URL}. Is it running?`);
     } else {
       console.error('[DTU] Error triggering event:', error);
     }

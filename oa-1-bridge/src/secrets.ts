@@ -9,10 +9,7 @@ const secretsSchema = z.object({
 export type Secrets = z.infer<typeof secretsSchema>;
 
 function parseEnvVars(): Secrets {
-  const env = process.env
-  const result = secretsSchema.safeParse({
-    GITHUB_WEBHOOK_SECRET: env.GITHUB_WEBHOOK_SECRET,
-  });
+  const result = secretsSchema.safeParse(process.env);
 
   if (!result.success) {
     const missingVars = result.error.issues

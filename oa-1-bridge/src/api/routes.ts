@@ -7,7 +7,6 @@ import { SECRETS } from "../secrets";
 export const apiRoutes = [
   route("/webhook", { post: handleWebhook }),
   route("/jobs", { get: handleJobs }),
-  route("/repos/:owner/:repo/actions/jobs/:jobId", { get: handleGitHubJobDetails }),
 ];
 
 const webhookHeadersSchema = z.object({
@@ -129,30 +128,6 @@ async function handleJobs({ request }: { request: Request }): Promise<Response> 
   });
 }
 
-async function handleGitHubJobDetails({ params }: { params: Record<string, string> }): Promise<Response> {
-  const jobId = params.jobId;
-  const deliveryId = await env.OA1_BRIDGE_JOBS.get(`jobid@${jobId}`);
-
-  if (!deliveryId) {
-    return new Response(JSON.stringify({ message: "Not Found (DTU Mock)" }), { 
-      status: 404,
-      headers: { "Content-Type": "application/json" }
-    });
-  }
-
-  const webhookDataRaw = await env.OA1_BRIDGE_JOBS.get(`webhook@${deliveryId}`);
-  if (!webhookDataRaw) {
-    return new Response(JSON.stringify({ message: "Webhook data missing (DTU Mock)" }), { 
-      status: 404,
-      headers: { "Content-Type": "application/json" }
-    });
-  }
-
-  const webhookData = JSON.parse(webhookDataRaw);
-  return new Response(JSON.stringify(webhookData.payload.workflow_job), {
-    headers: { "Content-Type": "application/json" },
-  });
-}
 
 
 /**

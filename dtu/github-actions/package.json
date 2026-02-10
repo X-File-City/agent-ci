@@ -1,0 +1,24 @@
+{
+  "name": "dtu-github-actions",
+  "version": "1.0.0",
+  "description": "Digital Twin Universe - GitHub Actions Mock and Simulation",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "server": "node --env-file=.env dist/server.js",
+    "simulate": "node --env-file=.env dist/simulate.js",
+    "server:dev": "tsx src/server.ts",
+    "simulate:dev": "tsx src/simulate.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

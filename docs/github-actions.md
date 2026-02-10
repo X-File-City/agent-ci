@@ -1,33 +1,94 @@
-To understand how GitHub communicates with a runner, you have to look at the direction of the traffic. It is a pull-based system, not a push-based one. GitHub never actually "calls" your runner; your runner calls GitHub.
+# GitHub Actions Specification (OA-1 & DTU)
 
-1. The Long-Poll Connection
-When you start the GitHub Actions runner application on your machine, it establishes an HTTPS connection to GitHub's message service. It uses Long Polling.
+This document defines the technical communication flow between the Digital Twin Universe (DTU), the OA-1 Bridge, and the Local Runner.
 
-The Request: The runner sends a request to GitHub saying, "Do you have a job for me?"
+## System Architecture
 
-The Wait: GitHub holds that request open for up to 50 seconds. If a job appears during that time, GitHub responds immediately with the job details.
+The Opposite-Action (OA-1) system mimics GitHub's pull-based runner architecture. In the local-first environment (DTU), components interaction is defined as follows:
 
-The Loop: If no job appears, the connection times out, and the runner immediately sends a new request.
+```mermaid
+sequenceDiagram
+    participant DTU as DTU (Simulation Server)
+    participant Bridge as OA-1 Bridge (Orchestrator)
+    participant Runner as OA-1 Runner (Local Agent)
+    participant Container as Docker Container
 
-2. Job Assignment and Token Exchange
-Once a job is available and the runner claims it, the communication shifts into a more intensive phase:
+    Note over DTU: State: In-Memory GitHub Mock
+    DTU->>Bridge: POST /webhook (workflow_job)
+    Note over Bridge: Validate Signature & Queue Job
+    
+    loop Every 10s
+        Runner->>Bridge: GET /api/jobs?username=peterp
+        Bridge-->>Runner: 200 OK [Job metadata]
+    end
 
-Ephemeral Token: GitHub provides the runner with a temporary ACTIONS_RUNTIME_TOKEN. This token is only valid for the duration of that specific job.
+    Note over Runner: Job Claimed
+    Runner->>Container: Spin up (catthehacker/ubuntu)
+    
+    Container->>DTU: GET /repos/:owner/:repo/actions/jobs/:job_id
+    Note right of DTU: Mirrors GitHub REST API
+    DTU-->>Container: 200 OK [Full Job JSON]
+    
+    Note over Container: Execute Workflow Steps
+```
 
-Job Specification: GitHub sends a JSON payload containing the "Plan." This includes the steps, environment variables, and secrets (encrypted) required for the run.
+---
 
-Heartbeats: While the job is running, the runner sends "heartbeat" signals every few seconds. If GitHub stops receiving these, it assumes the runner has crashed or lost power and marks the job as failed.
+## 1. Digital Twin Universe (DTU) API
 
-3. Log and Artifact Streaming
-As the runner executes your shell commands (or Docker containers), it needs to send data back so you can see it in the browser:
+The DTU provides a mirrored GitHub API to ensure that production code running inside containers interacts with a "real" (simulated) GitHub environment.
 
-Live Logs: The runner streams stdout and stderr back to GitHub’s log service in real-time chunks.
+### GitHub REST API Mirror
+**Endpoint**: `GET /repos/{owner}/{repo}/actions/jobs/{job_id}`  
+**Source of Truth**: [GitHub REST API Documentation](https://docs.github.com/en/rest/actions/workflow-jobs#get-a-job-for-a-workflow-run)
 
-Artifacts: If your workflow has an upload-artifact step, the runner opens a separate connection to GitHub’s storage service (usually backed by Azure Blob Storage or AWS S3) to upload those files.
+**Example Response**:
+```json
+{
+  "id": 12345678,
+  "run_id": 87654321,
+  "status": "queued",
+  "labels": ["ubuntu-latest"],
+  "head_sha": "d00d1e...",
+  "steps": []
+}
+```
 
-4. Why this matters for "Opposite-Action"
-This architecture is exactly why your Opposite-Action system is possible:
+### Internal DTU Seeding
+**Endpoint**: `POST /_dtu/seed`  
+Used by simulation scripts (`dtu/github-actions/simulate.ts`) to populate the mock server state.
 
-No Inbound Ports: Because the runner initiates the connection, you don't need to open any ports on your router or handle complex firewall rules.
+---
 
-Cloudflare as the Buffer: In your system, the Cloudflare Worker mimics this "Message Service" behavior. Your local oa agent polls the Worker just like the official runner polls GitHub, creating a familiar and secure communication loop.
+## 2. OA-1 Bridge API
+
+The Bridge acts as the message queue and presence orchestrator.
+
+### Webhook Ingestion
+**Endpoint**: `POST /api/webhook`  
+**Description**: Receives `workflow_job` events from GitHub (or DTU).  
+**Security**: Validates `X-Hub-Signature-256` using `GITHUB_WEBHOOK_SECRET`.
+
+### Job Polling
+**Endpoint**: `GET /api/jobs?username={username}`  
+**Description**: Runners poll this endpoint to announce availability and retrieve queued jobs.  
+**State**: Responding with a list of job metadata (IDs and tokens).
+
+---
+
+## 3. Communication Flow
+
+1.  **Event Trigger**: The `pnpm run simulate:dev` script seeds the DTU mock server with job details and then POSTs a `workflow_job` event to the Bridge.
+2.  **Job Queuing**: The Bridge identifies the user, checks if the runner is online, and queues the job metadata.
+3.  **Runner Activation**: The local runner, polling every 10 seconds, receives the job metadata.
+4.  **Docker Lifecycle**: The runner creates a container. It injects `GITHUB_API_URL` (pointing to the DTU server) and `GITHUB_TOKEN`.
+5.  **Direct Pull**: Inside the container, the bootstrap script calls the DTU server directly to fetch its own "Plan" (steps, secrets, etc.).
+
+---
+
+## 4. Why this matters for "Opposite-Action"
+
+By mirroring the official GitHub API in the DTU, we ensure that:
+- **Zero code changes**: The runner container doesn't know it's not talking to GitHub.
+- **Local Isolation**: You can develop and test CI logic without any internet connection.
+- **Technical Accuracy**: The system follows the exact same pull-based logic as the official GitHub Actions runner.
