@@ -4,7 +4,7 @@ This document defines the technical communication flow between the Digital Twin 
 
 ## System Architecture
 
-The Opposite-Action (OA-1) system mimics GitHub's pull-based runner architecture. In the local-first environment (DTU), components interaction is defined as follows:
+The Opposite-Actions (OA-1) system mimics GitHub's pull-based runner architecture. In the local-first environment (DTU), components interaction is defined as follows:
 
 ```mermaid
 sequenceDiagram
@@ -86,7 +86,7 @@ The Bridge acts as the message queue and presence orchestrator.
 
 ---
 
-## 4. Why this matters for "Opposite-Action"
+## 4. Why this matters for "Opposite-Actions"
 
 By mirroring the official GitHub API in the DTU, we ensure that:
 - **Zero code changes**: The runner container doesn't know it's not talking to GitHub.

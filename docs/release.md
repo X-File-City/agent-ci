@@ -1,10 +1,10 @@
 # Production Release Guide
 
-This document explains how to deploy **Opposite-Action** into production, from creating the GitHub App to running the local agent.
+This document explains how to deploy **Opposite-Actions** into production, from creating the GitHub App to running the local agent.
 
 ## 1. Overview & Prerequisites
 
-**Opposite-Action** uses a three-tier architecture:
+**Opposite-Actions** uses a three-tier architecture:
 1.  **GitHub App**: Triggers jobs via webhooks.
 2.  **Cloudflare Bridge**: Orchestrates jobs and tracks runner presence.
 3.  **Local Runner**: Polls the Bridge and executes jobs in Docker.
@@ -22,7 +22,7 @@ This document explains how to deploy **Opposite-Action** into production, from c
 The GitHub App is responsible for sending `workflow_job` events to the Bridge.
 
 1.  Go to **GitHub Settings > Developer Settings > GitHub Apps > New GitHub App**.
-2.  **Name**: `Opposite-Action-Runner` (or similar).
+2.  **Name**: `Opposite-Actions-Runner` (or similar).
 3.  **Homepage URL**: Your project URL.
 4.  **Webhook**:
     - **URL**: `https://[YOUR_BRIDGE_ADDRESS]/api/webhook`
@@ -51,7 +51,7 @@ The Bridge runs on Cloudflare Workers and uses KV for job storage.
 
 ### 1. Set Secrets using 1Password
 
-Before deploying, create an item in your **1Password** vault (e.g., in the `RedwoodJS` vault) named `OppositeAction` with the following fields:
+Before deploying, create an item in your **1Password** vault (e.g., in the `RedwoodJS` vault) named `OppositeActions` with the following fields:
 - `GITHUB_WEBHOOK_SECRET`: The GitHub Webhook secret.
 - `GITHUB_APP_ID`: The GitHub App ID.
 - `GITHUB_PRIVATE_KEY`: The content of the private key `.pem` file.
