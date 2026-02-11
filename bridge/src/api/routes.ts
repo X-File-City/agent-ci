@@ -15,6 +15,7 @@ function requiresAuthToken({ request }: { request: Request }) {
 export const apiRoutes = [
   route("/webhook", { post: handleWebhook }),
   route("/jobs", [requiresAuthToken, handleJobs ]),
+  route("/presence", handlePresence),
 ];
 
 const webhookHeadersSchema = z.object({
@@ -158,6 +159,20 @@ async function handleJobs({ request }: { request: Request }): Promise<Response> 
   }), {
     headers: { "Content-Type": "application/json" },
   });
+}
+
+async function handlePresence({ request }: { request: Request }): Promise<Response> {
+  const url = new URL(request.url);
+  const username = url.searchParams.get("username");
+
+  if (!username) {
+    return new Response("Missing username", { status: 400 });
+  }
+
+  const presence = await env.OA1_BRIDGE_PRESENCE.get(`presence@${username}`);
+  const status = presence ? "active" : "inactive";
+
+  return new Response(status, { status: 200 });
 }
 
 

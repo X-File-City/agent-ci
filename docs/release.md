@@ -78,17 +78,28 @@ pnpm --filter bridge release
 
 ## 4. Local Runner Setup
 
-The Runner stays on your machine and communicates with the Bridge.
+The Runner stays on your machine and communicates with the Bridge. It also manages the official GitHub Actions runner process for `opposite-actions` jobs.
 
-### 1. Configure `.env`
+### 1. Official GitHub Runner Setup
+
+Before starting the OA-1 Runner, you must have an official GitHub Actions self-hosted runner configured on your machine.
+
+1.  Follow the [official GitHub documentation](https://docs.github.com/en/actions/hosting-your-own-runners/managing-self-hosted-runners/adding-self-hosted-runners) to download and configure a runner for your repository or organization.
+2.  **Do not** start it manually; the OA-1 Runner will handle this for you.
+3.  Take note of the directory where you installed the runner.
+
+### 2. Configure `.env`
 Create a `.env` file in the root directory (the Runner will use this via symlink):
 
 ```bash
 BRIDGE_URL=https://oa-1.[your-subdomain].workers.dev
+BRIDGE_API_KEY=your-api-key
 GITHUB_USERNAME=your-github-handle
 ```
 
-### 2. Start the Runner
+**Note**: The OA-1 Runner will automatically search for the official runner's `./run.sh` in the current directory and the project root.
+
+### 3. Start the Runner
 ```bash
 # Install dependencies
 pnpm install

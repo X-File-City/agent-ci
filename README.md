@@ -90,7 +90,7 @@ jobs:
       - id: status
         run: |
           # Query the Cloudflare Orchestrator for local agent presence
-          RESPONSE=$(curl -s https://oa.your-domain.workers.dev/status?user=${{ github.actor }})
+          RESPONSE=$(curl -s https://oa-1.redwoodjs.workers.dev/api/presence?username=${{ github.actor }})
           if [ "$RESPONSE" == "active" ]; then
             echo "label=self-hosted" >> $GITHUB_OUTPUT
           else

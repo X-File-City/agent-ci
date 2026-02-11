@@ -1,9 +1,57 @@
 import { Job } from "./types";
 import { config } from "./config";
 import Docker from "dockerode";
+import { spawn } from "child_process";
+import path from "path";
+import fs from "fs";
 
 const docker = new Docker({ socketPath: "/var/run/docker.sock" });
 const IMAGE = "ghcr.io/catthehacker/ubuntu:act-latest";
+
+function findRunnerPath(): string | null {
+  const searchPaths = [
+    path.join(process.cwd(), "actions-runner"), // actions-runner subfolder
+    path.join(process.cwd(), "..", "actions-runner"), // actions-runner in project root
+  ];
+
+  for (const searchPath of searchPaths) {
+    const runScript = path.join(searchPath, "run.sh");
+    if (fs.existsSync(runScript)) {
+      return searchPath;
+    }
+  }
+
+  return null;
+}
+
+export async function startGitHubRunner(): Promise<void> {
+  const runnerPath = findRunnerPath();
+
+  if (!runnerPath) {
+    console.log("[GitHubRunner] Official runner (run.sh) not found in standard locations. Skipping official runner start.");
+    console.log("[GitHubRunner] Tip: Install the official runner in the project root with the label 'opposite-actions'.");
+    return;
+  }
+
+  const runScript = path.join(runnerPath, "run.sh");
+  console.log(`[GitHubRunner] Starting official runner from: ${runScript}`);
+
+  const runnerProcess = spawn(runScript, [], {
+    cwd: runnerPath,
+    stdio: "inherit",
+    env: {
+      ...process.env,
+    },
+  });
+
+  runnerProcess.on("close", (code) => {
+    console.log(`[GitHubRunner] Process exited with code ${code}`);
+  });
+
+  runnerProcess.on("error", (err) => {
+    console.error(`[GitHubRunner] Failed to start process:`, err);
+  });
+}
 
 export async function ensureImageExists(): Promise<void> {
   console.log(`[Executor] Ensuring image ${IMAGE} exists...`);

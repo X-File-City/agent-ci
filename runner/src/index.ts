@@ -1,6 +1,6 @@
 import { config } from "./config";
 import { pollJobs } from "./bridge";
-import { executeJob, ensureImageExists } from "./executor";
+import { executeJob, ensureImageExists, startGitHubRunner } from "./executor";
 
 async function main() {
   console.log(`[Runner] Starting runner for user: ${config.GITHUB_USERNAME}`);
@@ -10,7 +10,10 @@ async function main() {
   await ensureImageExists();
   console.log("[Runner] Docker environment ready.");
 
-  // 2. Initial poll to announce availability
+  // 2. Start GitHub Long-Poll if configured
+  await startGitHubRunner();
+
+  // 3. Initial poll to announce availability
   console.log("[Runner] Announcing availability to bridge...");
   const initialJobs = await pollJobs();
   if (initialJobs.length > 0) {

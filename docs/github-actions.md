@@ -60,6 +60,22 @@ Used by simulation scripts (`dtu/github-actions/simulate.ts`) to populate the mo
 
 ---
 
+## 2. The GitHub Long-Poll
+
+Even if the Bridge says you are "active," GitHub itself won't send the job to your machine unless the official GitHub Actions self-hosted runner application is running and connected to GitHub’s servers.
+
+### How it works
+When your YAML says `runs-on: opposite-actions`, GitHub looks for an open HTTPS long-poll connection from a runner registered to that repo with that label.
+
+1.  **Registration**: The official runner application (`./run.sh`) must be registered with the repository or organization.
+2.  **Connection**: Once started, it maintains a persistent connection to GitHub.
+3.  **Job Assignment**: If the connection isn't open, the job will hang in "Queued" status even if your Bridge check passed.
+
+### OA-1 Integration
+The local OA-1 Runner initiates the standard GitHub Actions self-hosted runner process (`./run.sh`) automatically if configured. This ensures that GitHub can "see" the runner and assign jobs to it, while the OA-1 Runner provides the enhanced orchestration and local-first features.
+
+---
+
 ## 2. OA-1 Bridge API
 
 The Bridge acts as the message queue and presence orchestrator.
