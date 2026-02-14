@@ -8,9 +8,9 @@ import { config } from './config.js';
  * It maintains an in-memory store of job metadata seeded by simulation scripts.
  */
 
-const jobs = new Map<string, any>();
+export const jobs = new Map<string, any>();
 
-const server = http.createServer((req, res) => {
+export const server = http.createServer((req, res) => {
   const { method, url } = req;
 
   console.log(`[DTU] ${method} ${url}`);
@@ -56,7 +56,7 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // 3. GitHub App Token Exchange Mock
+  // 3. GitHub App Token Exchange Mock (App Level)
   const tokenMatch = url?.match(/\/app\/installations\/(\d+)\/access_tokens/);
   if (method === 'POST' && tokenMatch) {
     const installationId = tokenMatch[1];
@@ -82,6 +82,45 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // 4. GitHub Installation Lookup Mock (Repo Level)
+  const repoInstallationMatch = url?.match(/\/repos\/([^/]+)\/([^/]+)\/installation/);
+  if (method === 'GET' && repoInstallationMatch) {
+    const owner = repoInstallationMatch[1];
+    const repo = repoInstallationMatch[2];
+    console.log(`[DTU] Fetching installation for ${owner}/${repo}`);
+
+    const response = {
+      id: 12345678,
+      account: {
+        login: owner,
+        type: "User",
+      },
+      repository_selection: "all",
+      access_tokens_url: `http://localhost:${config.DTU_PORT}/app/installations/12345678/access_tokens`,
+    };
+
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(response));
+    return;
+  }
+
+  // 5. GitHub Runner Registration Token Mock
+  const registrationTokenMatch = url?.match(/\/repos\/([^/]+)\/([^/]+)\/actions\/runners\/registration-token/);
+  if (method === 'POST' && registrationTokenMatch) {
+    const owner = registrationTokenMatch[1];
+    const repo = registrationTokenMatch[1];
+    console.log(`[DTU] Generating registration token for ${owner}/${repo}`);
+
+    const response = {
+      token: `ghr_mock_registration_token_${Math.random().toString(36).substring(7)}`,
+      expires_at: new Date(Date.now() + 3600 * 1000).toISOString()
+    };
+
+    res.writeHead(201, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(response));
+    return;
+  }
+
   // Health check
   if ((method === 'GET' || method === 'HEAD') && url === '/') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -93,6 +132,8 @@ const server = http.createServer((req, res) => {
   res.end('Not Found (DTU Mock)');
 });
 
-server.listen(config.DTU_PORT, () => {
-  console.log(`[DTU] Mock GitHub API server running at http://localhost:${config.DTU_PORT}`);
-});
+if (import.meta.url === `file://${process.argv[1]}` || process.env.NODE_ENV !== 'test') {
+  server.listen(config.DTU_PORT, () => {
+    console.log(`[DTU] Mock GitHub API server running at http://localhost:${config.DTU_PORT}`);
+  });
+}
