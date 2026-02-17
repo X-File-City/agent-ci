@@ -8,12 +8,28 @@ const docker = new Docker({ socketPath: "/var/run/docker.sock" });
 const IMAGE = "ghcr.io/actions/actions-runner:latest";
 const CONTAINER_PREFIX = "oa-runner-";
 const MAX_RUNNERS = 10;
+const LOGS_DIR = path.resolve(process.cwd(), "_", "logs");
+const PENDING_LOGS_DIR = path.join(LOGS_DIR, "pending");
+
+function getTimestamp(): string {
+  const now = new Date();
+  const YYYY = now.getFullYear();
+  const MM = String(now.getMonth() + 1).padStart(2, "0");
+  const DD = String(now.getDate()).padStart(2, "0");
+  const HH = String(now.getHours()).padStart(2, "0");
+  const mm = String(now.getMinutes()).padStart(2, "0");
+  return `${YYYY}${MM}${DD}-${HH}${mm}`;
+}
 
 interface RunnerState {
   id: string; // Container ID
   name: string;
   type: "warm" | "active";
   stream?: NodeJS.ReadableStream;
+  logPath: string;
+  logStream: fs.WriteStream;
+  timestamp: string;
+  commitSha?: string;
 }
 
 export class WarmPool {
@@ -105,7 +121,8 @@ export class WarmPool {
         console.log(`[WarmPool] Fetching registration token for ${containerName}...`);
         const registrationToken = await fetchRegistrationToken();
 
-        const repoUrl = `https://github.com/${config.GITHUB_REPO}`;
+        const dockerApiUrl = config.GITHUB_API_URL.replace("localhost", "host.docker.internal").replace("127.0.0.1", "host.docker.internal");
+        const repoUrl = `${dockerApiUrl}/${config.GITHUB_REPO}`;
 
         const container = await docker.createContainer({
             Image: IMAGE,
@@ -117,7 +134,12 @@ export class WarmPool {
                 `RUNNER_NAME=${containerName}`,
                 `RUNNER_TOKEN=${registrationToken}`,
                 `RUNNER_REPOSITORY_URL=${repoUrl}`,
-                `RUNNER_FLAGS=--ephemeral --unattended --labels opposite-actions`,
+                `GITHUB_API_URL=${dockerApiUrl}`,
+                `GITHUB_SERVER_URL=${repoUrl}`,
+                `GITHUB_REPOSITORY=${config.GITHUB_REPO}`,
+                `http_proxy=${dockerApiUrl}`,
+                `https_proxy=${dockerApiUrl}`,
+                `no_proxy=`,
                 ...(job?.localSync ? [
                     `OA_LOCAL_SYNC=true`,
                     `PATH=/tmp/oa-shims:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`,
@@ -125,7 +147,7 @@ export class WarmPool {
                 ] : []),
             ],
             // Run config.sh before run.sh to properly register the runner with the correct labels
-            Cmd: ["bash", "-c", "./config.sh --url $RUNNER_REPOSITORY_URL --token $RUNNER_TOKEN --name $RUNNER_NAME --unattended $RUNNER_FLAGS && ./run.sh --once"],
+            Cmd: ["bash", "-c", "echo \"DEBUG: GITHUB_SERVER_URL=$GITHUB_SERVER_URL\" && echo 'Testing connectivity...' && curl -v $GITHUB_API_URL || echo 'Curl failed' && GITHUB_SERVER_URL=$RUNNER_REPOSITORY_URL GITHUB_API_URL= ./config.sh --url $RUNNER_REPOSITORY_URL --token $RUNNER_TOKEN --name $RUNNER_NAME --unattended --ephemeral --labels opposite-actions || echo 'Config failed (ignoring)...' && ./run.sh --once"],
             HostConfig: {
             Binds: [
                 `${workDir}:/home/runner/_work`,
@@ -141,12 +163,23 @@ export class WarmPool {
         });
 
         const runnerId = container.id;
+        const timestamp = getTimestamp();
+        const logPath = path.join(PENDING_LOGS_DIR, `${timestamp}-${containerName}.log`);
+
+        // Ensure pending logs dir exists
+        if (!fs.existsSync(PENDING_LOGS_DIR)) fs.mkdirSync(PENDING_LOGS_DIR, { recursive: true });
+
+        const logStream = fs.createWriteStream(logPath, { flags: 'a' });
         
         // Add to map IMMEDIATELY as warm
         this.runners.set(runnerId, {
             id: runnerId,
             name: containerName,
-            type: "warm"
+            type: "warm",
+            logPath,
+            logStream,
+            timestamp,
+            commitSha: job?.headSha
         });
 
         await container.start();
@@ -169,7 +202,7 @@ export class WarmPool {
             stdout: true,
             stderr: true,
             follow: true,
-            tail: 0
+            tail: 100
         }) as NodeJS.ReadableStream;
 
         const runnerState = this.runners.get(runnerId);
@@ -181,25 +214,52 @@ export class WarmPool {
             const logLine = chunk.toString();
             // console.log(`[Runner ${runnerId.substring(0,6)}] ${logLine.trim()}`); // Verbose
 
-            // Detection logic
+            const runnerState = this.runners.get(runnerId);
+            if (runnerState) {
+                runnerState.logStream.write(chunk);
+            }
+
+            // Detection logic for job assignment
             if (logLine.includes("Job") && logLine.includes("message received")) {
                 this.markAsActive(runnerId);
+            }
+
+            // Detection logic for critical errors (only if EXIT_ON_ERROR is enabled)
+            if (config.EXIT_ON_ERROR) {
+                // Ignore "Cannot find GitHub repository..." as it is a benign SystemD error in this context
+                if (logLine.includes("Cannot find GitHub repository/organization name from server url")) {
+                     console.warn(`[WarmPool] Ignoring known benign error: ${logLine.trim()}`);
+                }
+
+                
+                // Detect general GitHub Actions runner errors
+                if (logLine.includes("[RUNNER") && logLine.includes("ERR")) {
+                    // Extract the error message for logging
+                    const errorMatch = logLine.match(/\[RUNNER.*ERR.*\]\s*(.*)/);
+                    if (errorMatch && errorMatch[1]) {
+                        const errorMsg = errorMatch[1].trim();
+                        // Only exit on critical errors, not all errors
+                        if (errorMsg.includes("System.InvalidOperationException") && !errorMsg.includes("Cannot find GitHub repository/organization name")) {
+                            this.handleCriticalError(errorMsg);
+                        }
+                    }
+                }
             }
         });
 
         // 2. Monitor Exit
         container.wait().then((result) => {
              console.log(`[WarmPool] Runner ${runnerId.substring(0, 12)} exited with code ${result.StatusCode}`);
-             this.handleRunnerExit(runnerId);
+             this.handleRunnerExit(runnerId, result.StatusCode);
         }).catch(err => {
             console.error(`[WarmPool] Error waiting for runner ${runnerId}:`, err);
-             this.handleRunnerExit(runnerId);
+             this.handleRunnerExit(runnerId, 1);
         });
 
     } catch (error) {
         console.error(`[WarmPool] Failed to attach to runner ${runnerId}:`, error);
         // If we can't attach, we should probably kill it to be safe, or just let it die.
-        this.handleRunnerExit(runnerId);
+        this.handleRunnerExit(runnerId, 1);
     }
   }
 
@@ -208,18 +268,61 @@ export class WarmPool {
     if (runner && runner.type === "warm") {
       console.log(`[WarmPool] Runner ${runner.name} picked up a job! Marking as ACTIVE.`);
       runner.type = "active";
+
+      // Move log file if commitSha is known or becomes known
+      if (runner.commitSha) {
+          const commitDir = path.join(LOGS_DIR, runner.commitSha);
+          if (!fs.existsSync(commitDir)) fs.mkdirSync(commitDir, { recursive: true });
+          
+          const newLogPath = path.join(commitDir, `${runner.timestamp}-${runner.name}.log`);
+          
+          // Re-pipe strategy: close current stream, move file, reopen stream
+          runner.logStream.end(() => {
+              try {
+                  fs.renameSync(runner.logPath, newLogPath);
+                  runner.logPath = newLogPath;
+                  runner.logStream = fs.createWriteStream(newLogPath, { flags: 'a' });
+              } catch (err) {
+                  console.error(`[WarmPool] Failed to move log file:`, err);
+                  // Keep writing to old path if move fails? 
+                  // For now, we'll just try to reopen at the old path to avoid losing logs
+                  runner.logStream = fs.createWriteStream(runner.logPath, { flags: 'a' });
+              }
+          });
+      }
+
       // Trigger reconcile to spawn a new warm runner
       this.reconcile();
     }
   }
 
-  private handleRunnerExit(runnerId: string) {
-    if (this.runners.has(runnerId)) {
-        this.runners.delete(runnerId);
+  private handleRunnerExit(runnerId: string, exitCode: number = 0) {
+    const runner = this.runners.get(runnerId);
+    if (runner) {
         console.log(`[WarmPool] Removed runner ${runnerId.substring(0, 12)} from pool.`);
+        
+        // Finalize log file
+        runner.logStream.end(() => {
+            const finalPath = runner.logPath.replace(/\.log$/, `.${exitCode}.log`);
+            try {
+                fs.renameSync(runner.logPath, finalPath);
+                console.log(`[WarmPool] Log finalized: ${finalPath}`);
+            } catch (err) {
+                console.error(`[WarmPool] Failed to finalize log file:`, err);
+            }
+        });
+
+        this.runners.delete(runnerId);
         // Trigger reconcile to replace it if it was the warm one
         this.reconcile();
     }
+  }
+
+  private async handleCriticalError(errorMessage: string) {
+    console.error(`[WarmPool] CRITICAL ERROR DETECTED: ${errorMessage}`);
+    console.error(`[WarmPool] Shutting down due to critical error...`);
+    await this.stop();
+    process.exit(1);
   }
 
   private async cleanupAll() {
@@ -300,4 +403,3 @@ export async function startWarmPool() {
 export async function stopWarmPool() {
     await warmPool.stop();
 }
-

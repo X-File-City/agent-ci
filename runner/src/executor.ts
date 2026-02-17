@@ -1,12 +1,25 @@
 import { Job } from "./types";
 import { config } from "./config";
 import Docker from "dockerode";
-import { spawn } from "child_process";
+import { spawn, execSync } from "child_process";
 import path from "path";
 import fs from "fs";
+import { fetchRegistrationToken } from "./bridge";
 
 const docker = new Docker({ socketPath: "/var/run/docker.sock" });
 const IMAGE = "ghcr.io/catthehacker/ubuntu:act-latest";
+const LOGS_DIR = path.resolve(process.cwd(), "_", "logs");
+const PENDING_LOGS_DIR = path.join(LOGS_DIR, "pending");
+
+function getTimestamp(): string {
+  const now = new Date();
+  const YYYY = now.getFullYear();
+  const MM = String(now.getMonth() + 1).padStart(2, "0");
+  const DD = String(now.getDate()).padStart(2, "0");
+  const HH = String(now.getHours()).padStart(2, "0");
+  const mm = String(now.getMinutes()).padStart(2, "0");
+  return `${YYYY}${MM}${DD}-${HH}${mm}`;
+}
 
 function findRunnerPath(): string | null {
   const searchPaths = [
@@ -24,6 +37,7 @@ function findRunnerPath(): string | null {
   return null;
 }
 
+
 export async function startGitHubRunner(): Promise<void> {
   const runnerPath = findRunnerPath();
 
@@ -33,6 +47,48 @@ export async function startGitHubRunner(): Promise<void> {
     return;
   }
 
+  // 1. Check/Update Configuration
+  const runnerConfigFile = path.join(runnerPath, ".runner");
+  const expectedRepoUrl = `${config.GITHUB_API_URL}/${config.GITHUB_REPO}`;
+  let needsConfig = true;
+
+  if (fs.existsSync(runnerConfigFile)) {
+    try {
+      const currentConfig = JSON.parse(fs.readFileSync(runnerConfigFile, "utf-8"));
+      if (currentConfig.gitHubUrl === expectedRepoUrl) {
+        needsConfig = false;
+        console.log(`[GitHubRunner] Existing configuration matches ${expectedRepoUrl}.`);
+      } else {
+        console.log(`[GitHubRunner] Configuration mismatch. Current: ${currentConfig.gitHubUrl}, Expected: ${expectedRepoUrl}`);
+      }
+    } catch (e) {
+      console.warn("[GitHubRunner] Failed to read .runner config. Re-configuring...");
+    }
+  }
+
+  if (needsConfig) {
+    console.log(`[GitHubRunner] Configuring runner for: ${expectedRepoUrl}...`);
+    try {
+      const registrationToken = await fetchRegistrationToken();
+      const configScript = path.join(runnerPath, "config.sh");
+      
+      execSync(`${configScript} --url ${expectedRepoUrl} --token ${registrationToken} --name local-runner --replace --unattended --labels opposite-actions`, {
+        cwd: runnerPath,
+        stdio: "inherit",
+        env: {
+          ...process.env,
+          GITHUB_API_URL: config.GITHUB_API_URL,
+          GITHUB_SERVER_URL: `${config.GITHUB_API_URL}/${config.GITHUB_REPO}`,
+        }
+      });
+      console.log("[GitHubRunner] Configuration successful.");
+    } catch (error: any) {
+      console.error("[GitHubRunner] Configuration failed:", error.message);
+      // We'll try to start anyway, but it will likely fail if config is missing.
+    }
+  }
+
+  // 2. Start Runner
   const runScript = path.join(runnerPath, "run.sh");
   console.log(`[GitHubRunner] Starting official runner from: ${runScript}`);
 
@@ -41,6 +97,8 @@ export async function startGitHubRunner(): Promise<void> {
     stdio: "inherit",
     env: {
       ...process.env,
+      GITHUB_API_URL: config.GITHUB_API_URL,
+      GITHUB_SERVER_URL: `${config.GITHUB_API_URL}/${config.GITHUB_REPO}`,
     },
   });
 
@@ -77,6 +135,15 @@ export async function ensureImageExists(): Promise<void> {
 }
 
 export async function executeJob(job: Job): Promise<void> {
+  const timestamp = getTimestamp();
+  const runnerName = `executor-${job.deliveryId.substring(0, 8)}`;
+  let logPath = path.join(PENDING_LOGS_DIR, `${timestamp}-${runnerName}.log`);
+  
+  // Ensure pending logs dir exists
+  if (!fs.existsSync(PENDING_LOGS_DIR)) fs.mkdirSync(PENDING_LOGS_DIR, { recursive: true });
+
+  const logStream = fs.createWriteStream(logPath, { flags: 'a' });
+
   console.log(`[Executor] Processing job: ${job.deliveryId}`);
 
   try {
@@ -92,7 +159,6 @@ export async function executeJob(job: Job): Promise<void> {
     ];
 
     // 3. Create and Start Container
-    // The command pulls its own spec directly from GitHub.
     console.log(`[Executor] Creating container...`);
     const container = await docker.createContainer({
       Image: IMAGE,
@@ -112,6 +178,25 @@ export async function executeJob(job: Job): Promise<void> {
     await container.start();
     console.log(`[Executor] Container started.`);
 
+    // Identified commit SHA (usually in job.headSha or repository info if available)
+    const commitSha = job.headSha || "unknown";
+    if (commitSha !== "unknown") {
+        const commitDir = path.join(LOGS_DIR, commitSha);
+        if (!fs.existsSync(commitDir)) fs.mkdirSync(commitDir, { recursive: true });
+        
+        const newLogPath = path.join(commitDir, `${timestamp}-${runnerName}.log`);
+        logStream.end(() => {
+            try {
+                fs.renameSync(logPath, newLogPath);
+                logPath = newLogPath;
+                // Note: This is an async execution, we'd need to reopen the stream if we were tailing logs.
+                // In this executor, we get logs at the end. 
+            } catch (err) {
+                console.error(`[Executor] Failed to move log file:`, err);
+            }
+        });
+    }
+
     // 4. Wait for completion
     const waitResult = await container.wait();
     const exitCode = waitResult.StatusCode;
@@ -123,7 +208,14 @@ export async function executeJob(job: Job): Promise<void> {
       stderr: true,
       follow: false,
     });
-    // console.log(`[Executor] Logs:\n${logBuffer.toString()}`);
+    
+    // Write everything to the log file
+    fs.appendFileSync(logPath, logBuffer.toString());
+
+    // Finalize filename
+    const finalPath = logPath.replace(/\.log$/, `.${exitCode}.log`);
+    fs.renameSync(logPath, finalPath);
+    console.log(`[Executor] Log finalized: ${finalPath}`);
 
     // 6. Cleanup
     if (exitCode !== 0) {
@@ -136,6 +228,10 @@ export async function executeJob(job: Job): Promise<void> {
     }
   } catch (error: any) {
     console.error(`[Executor] Job failed:`, error.message);
+    if (fs.existsSync(logPath)) {
+        const finalPath = logPath.replace(/\.log$/, `.1.log`);
+        fs.renameSync(logPath, finalPath);
+    }
     throw error;
   }
 }

@@ -6,6 +6,7 @@ const configSchema = z.object({
   GITHUB_USERNAME: z.string().min(1),
   GITHUB_REPO: z.string().min(1),
   GITHUB_API_URL: z.string().url().default("https://api.github.com"),
+  EXIT_ON_ERROR: z.string().default("false").transform(val => val === "true"),
 });
 
 export type Config = z.infer<typeof configSchema>;
