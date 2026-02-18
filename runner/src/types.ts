@@ -14,5 +14,6 @@ export interface Job {
   localSync?: boolean;
   localPath?: string;
   headSha?: string;
+  steps?: any[];
   [key: string]: any;
 }

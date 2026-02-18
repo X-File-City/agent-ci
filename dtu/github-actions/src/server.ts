@@ -1,6 +1,15 @@
 import http from 'node:http';
 import crypto from 'node:crypto';
 import { config } from './config.js';
+import { 
+    PipelineAgentJobRequest, 
+    JobStep, 
+    JobVariable, 
+    ContextData, 
+    JobResources, 
+    JobWorkspace,
+    MessageResponse 
+} from './types.js';
 
 /**
  * Digital Twin Universe (DTU) - GitHub API Mock Server
@@ -19,6 +28,109 @@ jobs.clear();
 sessions.clear();
 messageQueues.clear();
 pendingPolls.clear();
+
+function createJobResponse(jobId: string, payload: any, baseUrl: string): MessageResponse {
+    const mappedSteps: JobStep[] = (payload.steps || []).map((step: any) => ({
+        ...step,
+        Id: crypto.randomUUID(),
+    }));
+
+    const Variables: { [key: string]: JobVariable } = {
+        "system.github.token": {
+            Value: "fake-token",
+            IsSecret: true,
+        },
+        "system.github.job": {
+            Value: "local-job",
+            IsSecret: false,
+        },
+        "system.github.repository": {
+            Value: "redwoodjs/opposite-actions",
+            IsSecret: false,
+        },
+        "github.repository": {
+            Value: "redwoodjs/opposite-actions",
+            IsSecret: false,
+        },
+        "github.actor": {
+            Value: "peterp",
+            IsSecret: false,
+        }
+    };
+
+    const ContextData: ContextData = {
+        "github": {
+            "t": 2, // Dictionary
+            "v": [
+                { "k": "repository", "v": { "t": 0, "v": "redwoodjs/opposite-actions" } },
+                { "k": "actor", "v": { "t": 0, "v": "peterp" } },
+                { "k": "sha", "v": { "t": 0, "v": "0000000000000000000000000000000000000000" } },
+                { "k": "ref", "v": { "t": 0, "v": "refs/heads/main" } },
+                { "k": "server_url", "v": { "t": 0, "v": baseUrl } },
+                { "k": "api_url", "v": { "t": 0, "v": `${baseUrl}/_apis` } },
+                { "k": "graphql_url", "v": { "t": 0, "v": `${baseUrl}/_graphql` } },
+                { "k": "workspace", "v": { "t": 0, "v": "/home/runner/work/opposite-actions/opposite-actions" } },
+                { "k": "action", "v": { "t": 0, "v": "__run" } }
+            ]
+        }
+    };
+
+    const jobRequest: PipelineAgentJobRequest = {
+        MessageType: 'PipelineAgentJobRequest',
+        Plan: {
+            PlanId: crypto.randomUUID(),
+            PlanType: "Action",
+            ScopeId: crypto.randomUUID(),
+        },
+        Timeline: {
+            Id: crypto.randomUUID(),
+            ChangeId: 1,
+        },
+        JobId: crypto.randomUUID(),
+        RequestId: parseInt(jobId) || 1,
+        JobDisplayName: payload.name || 'local-job',
+        JobName: payload.name || 'local-job',
+        Steps: mappedSteps,
+        Variables: Variables,
+        ContextData: ContextData,
+        Resources: {
+            Repositories: [],
+            Endpoints: [
+                {
+                    Name: "SystemVssConnection",
+                    Url: baseUrl,
+                    Authorization: { 
+                        Parameters: { 
+                            "AccessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJvcmNoaWQiOiIxMjMifQ.c2lnbmF0dXJl"
+                        }, 
+                        Scheme: "OAuth" 
+                    }
+                }
+            ]
+        },
+        Workspace: {
+            Path: "/home/runner/work/opposite-actions/opposite-actions",
+        },
+        SystemVssConnection: {
+            Url: baseUrl,
+            Authorization: { 
+                Parameters: { 
+                    "AccessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJvcmNoaWQiOiIxMjMifQ.c2lnbmF0dXJl"
+                }, 
+                Scheme: "OAuth" 
+            }
+        },
+        Actions: [],
+        MaskHints: [],
+        EnvironmentVariables: []
+    };
+
+    return {
+        MessageId: 1,
+        MessageType: 'PipelineAgentJobRequest',
+        Body: JSON.stringify(jobRequest)
+    };
+}
 
 export const server = http.createServer((req, res) => {
   const { method, headers } = req;
@@ -59,47 +171,19 @@ export const server = http.createServer((req, res) => {
         const payload = JSON.parse(body);
         const jobId = payload.id?.toString();
         if (jobId) {
-          jobs.set(jobId, payload);
+          const mappedSteps = (payload.steps || []).map((step: any) => ({
+            ...step,
+            Id: crypto.randomUUID(), // Always use a UUID for Step ID
+          }));
+
+          jobs.set(jobId, { ...payload, steps: mappedSteps });
           console.log(`[DTU] Seeded job: ${jobId}`);
           
           // Notify any pending polls
           for (const [sessionId, { res, baseUrl: runnerBaseUrl }] of pendingPolls) {
               console.log(`[DTU] Notifying session ${sessionId} of new job ${jobId} (Wait URL: ${runnerBaseUrl})`);
               res.writeHead(200, { 'Content-Type': 'application/json' });
-              res.end(JSON.stringify({
-                  messageId: 1,
-                  messageType: 'PipelineAgentJobRequest',
-                  body: JSON.stringify({
-                      MessageType: 'PipelineAgentJobRequest',
-                      Plan: {
-                          PlanId: crypto.randomUUID(),
-                      },
-                      Timeline: {
-                          Id: crypto.randomUUID(),
-                      },
-                      JobId: crypto.randomUUID(),
-                      RequestId: parseInt(jobId) || 1,
-                      JobName: payload.name || 'test-job',
-                      Steps: [],
-                      Variables: {},
-                      Resources: {
-                          Endpoints: [
-                              {
-                                  Name: "SystemVssConnection",
-                                  Url: runnerBaseUrl,
-                                  Authorization: {
-                                      Scheme: "OAuth",
-                                      Parameters: {
-                                          AccessToken: `${Buffer.from(JSON.stringify({ alg: "None", typ: "JWT" })).toString('base64url')}.${Buffer.from(JSON.stringify({ orch_id: crypto.randomUUID() })).toString('base64url')}.`
-                                      }
-                                  }
-                              }
-                          ]
-                      },
-                      Workspace: {},
-                      ContextData: {}
-                  })
-              }));
+              res.end(JSON.stringify(createJobResponse(jobId, payload, runnerBaseUrl)));
               pendingPolls.delete(sessionId);
           }
 
@@ -284,34 +368,12 @@ export const server = http.createServer((req, res) => {
        }
        pendingPolls.set(sessionId, { res, baseUrl });
 
-       // Check if we have any queued jobs to send immediately
+       console.log(`[DTU] TRACE-DELIVERY: Entering poll handler for session ${sessionId}. jobs.size=${jobs.size}`);
        if (jobs.size > 0) {
            const [[jobId, jobData]] = Array.from(jobs.entries());
-           console.log(`[DTU] Sending immediate job ${jobId} to session ${sessionId}`);
+           console.log(`[DTU] TRACE-DELIVERY: Job found. Sending immediate job ${jobId} to session ${sessionId}`);
            res.writeHead(200, { 'Content-Type': 'application/json' });
-           res.end(JSON.stringify({
-               messageId: 1,
-               messageType: 'PipelineAgentJobRequest',
-               body: JSON.stringify({
-                   MessageType: 'PipelineAgentJobRequest',
-                   Plan: {
-                       PlanId: crypto.randomUUID(),
-                   },
-                   Timeline: {
-                       Id: crypto.randomUUID(),
-                   },
-                   JobId: crypto.randomUUID(),
-                   RequestId: parseInt(jobId) || 1,
-                   JobName: jobData.name || 'test-job',
-                   Steps: [],
-                   Variables: {},
-                   Resources: {
-                       Endpoints: []
-                   },
-                   Workspace: {},
-                   ContextData: {}
-               })
-           }));
+           res.end(JSON.stringify(createJobResponse(jobId, jobData, baseUrl)));
            jobs.delete(jobId);
            pendingPolls.delete(sessionId);
            return;
@@ -507,9 +569,7 @@ export const server = http.createServer((req, res) => {
     
     // Return the list of available API resources
     // This allows VssHttpClientBase to discover the "Pools" resource
-    res.end(JSON.stringify({
-      count: 1,
-      value: [
+    const responseValue = [
         {
           id: "A8C47E17-4D56-4A56-92BB-DE7EA7DC65BE",
           area: "distributedtask",
@@ -589,7 +649,11 @@ export const server = http.createServer((req, res) => {
           maxVersion: "9.0",
           releasedVersion: "9.0"
         }
-      ]
+    ];
+
+    res.end(JSON.stringify({
+      count: responseValue.length,
+      value: responseValue
     }));
     return;
   }
@@ -616,6 +680,6 @@ export const server = http.createServer((req, res) => {
 
 if (import.meta.url === `file://${process.argv[1]}` || process.env.NODE_ENV !== 'test') {
   server.listen(config.DTU_PORT, '0.0.0.0', () => {
-    console.log(`[DTU] Mock GitHub API server running at http://0.0.0.0:${config.DTU_PORT}`);
+    console.log(`[DTU] OA-RUN-1 Mock GitHub API server running at http://0.0.0.0:${config.DTU_PORT}`);
   });
 }

@@ -1,5 +1,5 @@
-import { config } from "./config";
-import { Job } from "./types";
+import { config } from "./config.js";
+import { Job } from "./types.js";
 
 export async function pollJobs(): Promise<Job[]> {
   const url = `${config.BRIDGE_URL}/api/jobs?username=${config.GITHUB_USERNAME}`;

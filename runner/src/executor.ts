@@ -1,10 +1,10 @@
-import { Job } from "./types";
-import { config } from "./config";
+import { Job } from "./types.js";
+import { config } from "./config.js";
 import Docker from "dockerode";
 import { spawn, execSync } from "child_process";
 import path from "path";
 import fs from "fs";
-import { fetchRegistrationToken } from "./bridge";
+import { fetchRegistrationToken } from "./bridge.js";
 
 const docker = new Docker({ socketPath: "/var/run/docker.sock" });
 const IMAGE = "ghcr.io/catthehacker/ubuntu:act-latest";

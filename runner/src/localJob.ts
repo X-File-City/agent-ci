@@ -2,8 +2,8 @@ import Docker from "dockerode";
 import path from "path";
 import fs from "fs";
 import { execSync } from "child_process";
-import { config } from "./config";
-import { Job } from "./types";
+import { config } from "./config.js";
+import { Job } from "./types.js";
 
 const docker = new Docker({ socketPath: "/var/run/docker.sock" });
 const IMAGE = "ghcr.io/actions/actions-runner:latest";
@@ -134,7 +134,7 @@ esac
             // Mount the clean workspace as the repository root
             `${workspaceDir}:/home/runner/_work/${config.GITHUB_REPO}`
         ],
-        AutoRemove: true // Clean up after ourselves for this one-off
+        AutoRemove: false // Keep it for inspection
     },
     Tty: true
   });
@@ -158,12 +158,23 @@ esac
   stream.pipe(logStream);
 
   // 6. Wait for Exit
-  const waitResult = await container.wait();
-  console.log(`[LocalJob] Runner exited with code ${waitResult.StatusCode}`);
+  try {
+    const waitResult = await container.wait();
+    console.log(`[LocalJob] Runner exited with code ${waitResult.StatusCode}`);
+  } finally {
+    // 7. Cleanup
+    console.log(`[LocalJob] Cleaning up...`);
 
-  // 7. Cleanup
-  console.log(`[LocalJob] Cleaning up temporary workspace...`);
-  if (fs.existsSync(workspaceDir)) fs.rmSync(workspaceDir, { recursive: true, force: true });
-  if (fs.existsSync(shimsDir)) fs.rmSync(shimsDir, { recursive: true, force: true });
-  // We keep workDir (the runner settings/home) for now, or could clean it too.
+    // Ensure streams are closed to allow process to exit
+    stream.unpipe(process.stdout);
+    stream.unpipe(logStream);
+    if ("destroy" in stream && typeof stream.destroy === "function") {
+      (stream as any).destroy();
+    }
+    logStream.end();
+
+    if (fs.existsSync(workspaceDir)) fs.rmSync(workspaceDir, { recursive: true, force: true });
+    if (fs.existsSync(shimsDir)) fs.rmSync(shimsDir, { recursive: true, force: true });
+    // We keep workDir (the runner settings/home) for now, or could clean it too.
+  }
 }

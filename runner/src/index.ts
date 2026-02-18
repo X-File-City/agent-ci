@@ -1,5 +1,5 @@
-import { config } from "./config";
-import { startWarmPool, stopWarmPool } from "./warm-pool";
+import { config } from "./config.js";
+import { startWarmPool, stopWarmPool } from "./warm-pool.js";
 
 async function main() {
   console.log(`[Runner] Starting runner for user: ${config.GITHUB_USERNAME}`);

@@ -1,6 +1,6 @@
 import { execSync } from "child_process";
 import path from "path";
-import { config } from "./config";
+import { config } from "./config.js";
 
 async function run() {
   const command = process.argv[2];
