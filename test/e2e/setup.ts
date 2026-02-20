@@ -59,13 +59,13 @@ export class E2ETestHarness {
     return await res.json();
   }
 
-  async runRunner(jobId: string) {
-    console.log(`[E2E] Running runner for job ${jobId}...`);
+  async runSupervisor(jobId: string) {
+    console.log(`[E2E] Running supervisor for job ${jobId}...`);
     const proc = execa(
       "pnpm",
       [
         "tsx",
-        "runner/src/cli.ts",
+        "supervisor/src/cli.ts",
         "run",
         "--workflow",
         ".github/workflows/smoke-test.yml",
@@ -92,12 +92,12 @@ export class E2ETestHarness {
     try {
       return await proc;
     } catch (e: any) {
-      console.error(`[E2E] Runner failed: ${e.message}`);
+      console.error(`[E2E] Supervisor failed: ${e.message}`);
       if (e.stdout) {
-        console.error(`[E2E] Runner stdout: ${e.stdout}`);
+        console.error(`[E2E] Supervisor stdout: ${e.stdout}`);
       }
       if (e.stderr) {
-        console.error(`[E2E] Runner stderr: ${e.stderr}`);
+        console.error(`[E2E] Supervisor stderr: ${e.stderr}`);
       }
       throw e;
     }

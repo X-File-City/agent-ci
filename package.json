@@ -2,7 +2,9 @@
   "name": "oa-1",
   "private": true,
   "scripts": {
-    "dev": "concurrently --kill-others --names \"GitHub,Bridge,Runner\" \"pnpm --filter dtu-github-actions dev\" \"wait-on http://localhost:8910 && pnpm --filter bridge dev\" \"wait-on http://localhost:8911 && pnpm --filter runner dev\"",
+    "dev": "concurrently --kill-others --names \"GitHub,Bridge,Supervisor\" \"pnpm --filter dtu-github-actions dev\" \"wait-on http://localhost:8910 && pnpm --filter bridge dev\" \"wait-on http://localhost:8911 && pnpm --filter supervisor dev\"",
+    "test": "npm-run-all test:*",
+    "test:unit": "pnpm -r test",
     "test:e2e": "rm -rf _ && vitest run test/e2e",
     "check": "npm-run-all --parallel typecheck lint format:check",
     "check:fix": "npm-run-all --parallel typecheck lint:fix format:fix",
@@ -28,6 +30,7 @@
     "vitest": "^4.0.18",
     "wait-on": "^9.0.3"
   },
+  "packageManager": "pnpm@10.30.1",
   "pnpm": {
     "onlyBuiltDependencies": [
       "esbuild",

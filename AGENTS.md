@@ -13,7 +13,7 @@ Unlike ephemeral runners, this system is designed to **freeze on failure**. When
 
 ## Technical Stack
 
-- **Runtimes**: Node.js (Runner/DTU), Cloudflare Workers (Bridge)
+- **Runtimes**: Node.js (Supervisor/DTU), Cloudflare Workers (Bridge)
 - **Language**: TypeScript (using `tsgo` for fast type checking)
 - **Formatting**: `oxfmt`
 - **Linting**: `oxlint`
@@ -22,13 +22,13 @@ Unlike ephemeral runners, this system is designed to **freeze on failure**. When
 ## Project Structure
 
 - [bridge](./bridge): Cloudflare Worker (Orchestrator). Source of truth for runner availability.
-- [runner](./runner): Node.js daemon. Polls bridge and manages Docker lifecycle.
+- [supervisor](./supervisor): Node.js daemon. Polls bridge and manages Docker lifecycle.
 - [dtu-github-actions](./dtu-github-actions): Digital Twin Universe mock tools for local simulation.
 
 ## Common Commands
 
 - `pnpm install`: Install dependencies.
-- `pnpm dev`: Start all services (DTU, Bridge, Runner) concurrently.
+- `pnpm dev`: Start all services (DTU, Bridge, Supervisor) concurrently.
 - `pnpm check`: Run `typecheck`, `lint`, and `format:check`.
 - `pnpm check:fix`: Run all checks and apply automatic fixes.
 - `pnpm lint:fix`: Run `oxlint --fix`.
@@ -39,7 +39,7 @@ Unlike ephemeral runners, this system is designed to **freeze on failure**. When
 Be concise. Use TLDR. Never assume. Always provide the reasons why; and cite examples.
 
 1. **Use Workspace Filters**:
-   1.1 When working on specific components, use `--filter` (e.g., `pnpm --filter runner test`).
+   1.1 When working on specific components, use `--filter` (e.g., `pnpm --filter supervisor test`).
 2. **Standard Tools**:
    2.1 Always use `oxlint` and `oxfmt`. Do not introduce ESLint or Prettier unless explicitly requested.
    2.2 Always use `tsgo` for type checking.

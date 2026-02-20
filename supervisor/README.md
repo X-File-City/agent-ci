@@ -1,6 +1,6 @@
-# Runner
+# Supervisor
 
-The **Runner** is a Node.js daemon that executes on your local machine. It polls the **Bridge** for jobs and manages Docker containers to execute GitHub Actions.
+The **Supervisor** is a Node.js daemon that executes on your local machine. It polls the **Bridge** for jobs and manages Docker containers to execute GitHub Actions.
 
 ## Features
 
@@ -18,12 +18,12 @@ This package is part of a `pnpm` workspace.
 2. **Run Locally**:
    From the project root:
    ```bash
-   pnpm --filter runner dev
+   pnpm --filter supervisor dev
    ```
 
 ## Configuration
 
-The runner relies on:
+The supervisor relies on:
 
 - `BRIDGE_URL`: The URL of the Bridge API.
 - `BRIDGE_API_KEY`: Authentication for polling jobs.

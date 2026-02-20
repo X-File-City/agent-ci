@@ -1,7 +1,7 @@
 {
-  "name": "runner",
+  "name": "supervisor",
   "version": "1.0.0",
-  "description": "Local runner for oa-1",
+  "description": "Local supervisor for oa-1",
   "keywords": [],
   "license": "ISC",
   "author": "",

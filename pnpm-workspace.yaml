@@ -1,4 +1,4 @@
 packages:
   - "bridge"
-  - "runner"
+  - "supervisor"
   - "dtu-github-actions"

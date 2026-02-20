@@ -3,7 +3,7 @@ import { E2ETestHarness } from "./setup.js";
 import fs from "node:fs";
 import path from "node:path";
 
-describe("Runner E2E Regressions", () => {
+describe("Supervisor E2E Regressions", () => {
   const harness = new E2ETestHarness();
 
   beforeAll(async () => {
@@ -22,7 +22,7 @@ describe("Runner E2E Regressions", () => {
       steps: [{ id: "step-1", name: "Say Hello", run: 'echo "Hello from E2E"' }],
     });
 
-    const result = await harness.runRunner(jobId);
+    const result = await harness.runSupervisor(jobId);
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("Job succeeded");
@@ -33,7 +33,7 @@ describe("Runner E2E Regressions", () => {
     const runnerName = match![0];
     const stepOutputLogPath = path.resolve(
       process.cwd(),
-      "runner",
+      "supervisor",
       "_",
       "logs",
       runnerName,
@@ -44,7 +44,7 @@ describe("Runner E2E Regressions", () => {
   }, 60000);
 
   it("should place logs in a flat file structure", async () => {
-    const logsDir = path.resolve(process.cwd(), "runner", "_", "logs");
+    const logsDir = path.resolve(process.cwd(), "supervisor", "_", "logs");
 
     const countLogFiles = (dir: string) => {
       if (!fs.existsSync(dir)) {
@@ -70,7 +70,7 @@ describe("Runner E2E Regressions", () => {
 
     const jobId = "log-test-" + Date.now();
     await harness.seedJob({ id: jobId, name: "log-test" });
-    await harness.runRunner(jobId);
+    await harness.runSupervisor(jobId);
 
     const finalCount = countLogFiles(logsDir);
     expect(finalCount).toBeGreaterThan(initialCount);

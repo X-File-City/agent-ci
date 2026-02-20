@@ -10,9 +10,9 @@ Unlike standard ephemeral runners, **Opposite-Actions** is designed to **freeze 
 
 This project is organized as a `pnpm` workspace:
 
-- [bridge/](file:///Users/peterp/gh/redwoodjs/oa-1/bridge): A Cloudflare Worker that orchestrates jobs and presence.
-- [runner/](file:///Users/peterp/gh/redwoodjs/oa-1/runner): A Node.js agent that polls the bridge and runs Docker jobs.
-- [dtu/github-actions/](file:///Users/peterp/gh/redwoodjs/oa-1/dtu/github-actions): Digital Twin Universe mock tools for local simulation.
+- [bridge/](./bridge): A Cloudflare Worker that orchestrates jobs and presence.
+- [supervisor/](./supervisor): A Node.js agent that polls the bridge and runs Docker jobs.
+- [dtu-github-actions/](./dtu-github-actions): Digital Twin Universe mock tools for local simulation.
 
 ---
 
@@ -45,7 +45,7 @@ Shared environment variables are managed at the root.
 > All services use symbolic links pointing back to these root files:
 >
 > - `bridge/.env` -> `../.env`
-> - `runner/.env` -> `../.env`
+> - `supervisor/.env` -> `../.env`
 > - `dtu/github-actions/.env` -> `../../.env`
 
 ---
@@ -62,7 +62,7 @@ This command uses `concurrently` and `wait-on` to ensure:
 
 1. `dtu/github-actions` (Mock Server) starts first on port 8910.
 2. `bridge` waits for the mock server to be ready and starts on port 8911.
-3. `runner` waits for the bridge to be ready.
+3. `supervisor` waits for the bridge to be ready.
 
 Or target specific services:
 
@@ -78,7 +78,7 @@ pnpm --filter bridge dev
 The system consists of three primary technical components:
 
 1.  **Cloudflare Worker (Orchestrator):** The source of truth for runner availability. It queues jobs and manages "Heartbeats" from local nodes.
-2.  **Local Runner (Agent):** A Node.js daemon running on your MacBook that polls for jobs and manages the Docker lifecycle.
+2.  **Local Supervisor (Agent):** A Node.js daemon running on your MacBook that polls for jobs and manages the Docker lifecycle.
 3.  **Docker Environment (Execution):** Standard `ghcr.io/actions/actions-runner` containers that perform the work.
 
 ---
