@@ -43,6 +43,92 @@
             </button>
           </div>
         </div>
+        <div
+          style="
+            background-color: var(--card-bg, #1e1e1e);
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 24px;
+          "
+        >
+          <div
+            style="
+              display: flex;
+              align-items: flex-start;
+              justify-content: space-between;
+              flex-wrap: wrap;
+              margin-bottom: 12px;
+            "
+          >
+            <div>
+              <h3 style="margin: 0 0 8px 0">Project Workflows</h3>
+              <div>
+                Selected:
+                <span id="project-path-display" style="color: #888; font-weight: bold">None</span>
+              </div>
+            </div>
+            <button
+              id="select-project-btn"
+              style="
+                padding: 10px 20px;
+                font-weight: bold;
+                background: #007bff;
+                color: white;
+                border: none;
+                border-radius: 6px;
+                cursor: pointer;
+              "
+            >
+              Select Project
+            </button>
+          </div>
+          <div id="workflows-list" style="display: flex; flex-direction: column; gap: 8px">
+            <div style="color: #666; font-style: italic">No workflows loaded</div>
+          </div>
+        </div>
+
+        <div
+          style="
+            background-color: var(--card-bg, #1e1e1e);
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 24px;
+          "
+        >
+          <div style="margin-bottom: 12px">
+            <h3 style="margin: 0 0 8px 0">Recent Projects</h3>
+          </div>
+          <div id="recent-projects-list" style="display: flex; flex-direction: column; gap: 8px">
+            <div style="color: #666; font-style: italic">No recent projects</div>
+          </div>
+        </div>
+
+        <div
+          style="
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+          "
+        >
+          <h3 style="margin: 0">Execution Logs</h3>
+          <button
+            id="stop-workflow-btn"
+            disabled
+            style="
+              padding: 6px 12px;
+              font-weight: bold;
+              background: #dc3545;
+              color: white;
+              border: none;
+              border-radius: 4px;
+              cursor: not-allowed;
+              opacity: 0.5;
+            "
+          >
+            Stop Workflow
+          </button>
+        </div>
 
         <div
           style="
