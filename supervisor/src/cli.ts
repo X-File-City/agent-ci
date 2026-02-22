@@ -207,12 +207,13 @@ async function handleRun(options: { sha?: string; workflow?: string; taskName?: 
         default_branch: "main",
       },
       steps,
+      workflowPath,
     };
 
     // 7. Execute
     await executeLocalJob(job);
-  } catch (error: any) {
-    console.error(`[OA] Failed to trigger run: ${error.message}`);
+  } catch (error) {
+    console.error(`[OA] Failed to trigger run: ${(error as Error).message}`);
     process.exit(1);
   }
 }
@@ -287,12 +288,13 @@ async function handleRunAll(options: { sha?: string; branch?: string; taskName?:
           default_branch: "main",
         },
         steps,
+        workflowPath,
       };
 
       await executeLocalJob(job);
     }
-  } catch (error: any) {
-    console.error(`[OA] Failed to run all: ${error.message}`);
+  } catch (error) {
+    console.error(`[OA] Failed to run all: ${(error as Error).message}`);
     process.exit(1);
   }
 }

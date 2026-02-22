@@ -8,6 +8,8 @@ import type { MyRPCSchema } from "../shared/rpc.ts";
 let procs: any[] = [];
 let dtuProc: any = null;
 let supervisorProc: any = null;
+let activeSupervisorRunId: string | null = null;
+let appState = { projectPath: "", commitId: "WORKING_TREE" };
 
 function getWorkspaceRoot() {
   let current = import.meta.dirname;
@@ -109,6 +111,18 @@ const rpc = defineElectrobunRPC<MyRPCSchema, "bun">("bun", {
         }
         return true;
       },
+      getDtuStatus: async () => {
+        return dtuProc !== null;
+      },
+      getAppState: async () => appState,
+      setAppState: async (params) => {
+        if (params.projectPath !== undefined) {
+          appState.projectPath = params.projectPath;
+        }
+        if (params.commitId !== undefined) {
+          appState.commitId = params.commitId;
+        }
+      },
       getRecentProjects: async () => {
         const fs = await import("node:fs/promises");
         const configPath = path.join(Utils.paths.userData, "recent_projects.json");
@@ -180,6 +194,7 @@ const rpc = defineElectrobunRPC<MyRPCSchema, "bun">("bun", {
         if (supervisorProc) {
           supervisorProc.kill();
           supervisorProc = null;
+          activeSupervisorRunId = null;
         }
 
         const workflowsPath = path.join(projectPath, ".github", "workflows");
@@ -188,7 +203,6 @@ const rpc = defineElectrobunRPC<MyRPCSchema, "bun">("bun", {
         rpc.send.dtuLog(`\n[OA] Starting workflow run: ${workflowId} in ${projectPath}\n`);
 
         try {
-          // pnpm --filter supervisor run oa run --workflow <path>
           supervisorProc = Bun.spawn(
             ["pnpm", "--filter", "supervisor", "run", "oa", "run", "--workflow", fullPath],
             {
@@ -198,7 +212,21 @@ const rpc = defineElectrobunRPC<MyRPCSchema, "bun">("bun", {
               stderr: "pipe",
             },
           );
+          const currentProc = supervisorProc;
           procs.push(supervisorProc);
+
+          currentProc.exited
+            .then(() => {
+              if (supervisorProc === currentProc) {
+                supervisorProc = null;
+                activeSupervisorRunId = null;
+              }
+            })
+            .catch(() => {});
+
+          let runIdResolved = false;
+          let resolveRunId: (id: string | null) => void;
+          const runIdPromise = new Promise<string | null>((r) => (resolveRunId = r));
 
           const readOutput = async (stream: ReadableStream | null) => {
             if (!stream) {
@@ -212,6 +240,16 @@ const rpc = defineElectrobunRPC<MyRPCSchema, "bun">("bun", {
                 break;
               }
               const text = decoder.decode(value);
+
+              if (!runIdResolved) {
+                const match = text.match(/(oa-runner-\d+)/);
+                if (match) {
+                  runIdResolved = true;
+                  activeSupervisorRunId = match[1];
+                  resolveRunId(match[1]);
+                }
+              }
+
               rpc.send.dtuLog(text);
             }
           };
@@ -219,11 +257,18 @@ const rpc = defineElectrobunRPC<MyRPCSchema, "bun">("bun", {
           readOutput(supervisorProc.stdout);
           readOutput(supervisorProc.stderr);
 
-          return true;
+          // Timeout runId resolution after 5 seconds just in case
+          setTimeout(() => {
+            if (!runIdResolved) {
+              resolveRunId(null);
+            }
+          }, 5000);
+
+          return await runIdPromise;
         } catch (e) {
           console.error("Failed to run workflow:", e);
           rpc.send.dtuLog(`[OA] Failed to run workflow: ${(e as Error).message}\n`);
-          return false;
+          return null;
         }
       },
       stopWorkflow: async () => {
@@ -232,9 +277,138 @@ const rpc = defineElectrobunRPC<MyRPCSchema, "bun">("bun", {
           supervisorProc.kill();
           procs = procs.filter((p) => p !== supervisorProc);
           supervisorProc = null;
+          activeSupervisorRunId = null;
           return true;
         }
         return false;
+      },
+      getRunCommits: async ({ projectPath: _projectPath }) => {
+        const fs = await import("node:fs/promises");
+        const logsDir = path.join(getWorkspaceRoot(), "supervisor", "_", "logs");
+        try {
+          const files = await fs.readdir(logsDir, { withFileTypes: true });
+          const commitsMap = new Map<string, { id: string; label: string; date: number }>();
+
+          for (const file of files) {
+            if (file.isDirectory() && file.name.startsWith("oa-runner-")) {
+              const runDir = path.join(logsDir, file.name);
+              const outputLogPath = path.join(runDir, "output.log");
+              try {
+                const stat = await fs.stat(outputLogPath);
+                const content = await fs.readFile(outputLogPath, "utf-8");
+
+                // e.g. "Using: SHA abc1234 (HEAD) · oa-runner-1"
+                // or "Using: working directory (dirty files included) · oa-runner-2"
+                let commitId = "WORKING_TREE";
+                let label = "Working Tree";
+
+                const shaMatch = content.match(/Using: SHA ([a-f0-9]+)/);
+                if (shaMatch) {
+                  commitId = shaMatch[1];
+                  label = `Commit ${commitId.substring(0, 7)}`;
+                }
+
+                const existing = commitsMap.get(commitId);
+                const modifiedTime = stat.mtimeMs;
+                if (!existing || modifiedTime > existing.date) {
+                  commitsMap.set(commitId, { id: commitId, label, date: modifiedTime });
+                }
+              } catch {
+                // Ignore incomplete or missing logs
+              }
+            }
+          }
+
+          return Array.from(commitsMap.values()).sort((a, b) => b.date - a.date);
+        } catch (e) {
+          console.error("Failed to read runs logs dir", e);
+          return [];
+        }
+      },
+      getWorkflowsForCommit: async ({ projectPath: _projectPath, commitId }) => {
+        const fs = await import("node:fs/promises");
+        const logsDir = path.join(getWorkspaceRoot(), "supervisor", "_", "logs");
+        const results: {
+          runId: string;
+          workflowName: string;
+          status: "Passed" | "Failed" | "Running" | "Unknown";
+          date: number;
+        }[] = [];
+
+        try {
+          const files = await fs.readdir(logsDir, { withFileTypes: true });
+          for (const file of files) {
+            if (file.isDirectory() && file.name.startsWith("oa-runner-")) {
+              const runDir = path.join(logsDir, file.name);
+              const outputLogPath = path.join(runDir, "output.log");
+              const metadataPath = path.join(runDir, "metadata.json");
+              try {
+                const content = await fs.readFile(outputLogPath, "utf-8");
+                const stat = await fs.stat(outputLogPath);
+
+                const isWorkingTree = content.includes("working directory");
+                const shaMatch = content.match(/Using: SHA ([a-f0-9]+)/);
+
+                const fileCommitId = shaMatch ? shaMatch[1] : isWorkingTree ? "WORKING_TREE" : null;
+
+                if (fileCommitId === commitId) {
+                  let workflowName = "Unknown Workflow";
+                  try {
+                    const metaContent = await fs.readFile(metadataPath, "utf-8");
+                    const meta = JSON.parse(metaContent);
+                    workflowName = meta.workflowName || workflowName;
+                  } catch {
+                    // Ignore metadata parsing errors
+                  }
+
+                  let status: "Passed" | "Failed" | "Running" | "Unknown" = "Unknown";
+                  if (activeSupervisorRunId === file.name) {
+                    status = "Running";
+                  } else if (content.includes("Job succeeded")) {
+                    status = "Passed";
+                  } else if (content.includes("Job failed") || content.match(/✖ Job /)) {
+                    status = "Failed";
+                  }
+
+                  results.push({
+                    runId: file.name,
+                    workflowName,
+                    status,
+                    date: stat.mtimeMs,
+                  });
+                }
+              } catch {}
+            }
+          }
+          return results.sort((a, b) => b.date - a.date);
+        } catch {
+          return [];
+        }
+      },
+      getRunDetails: async ({ runId }) => {
+        const fs = await import("node:fs/promises");
+        const outputLogPath = path.join(
+          getWorkspaceRoot(),
+          "supervisor",
+          "_",
+          "logs",
+          runId,
+          "output.log",
+        );
+        try {
+          const logs = await fs.readFile(outputLogPath, "utf-8");
+          let status: "Passed" | "Failed" | "Running" | "Unknown" = "Unknown";
+          if (activeSupervisorRunId === runId) {
+            status = "Running";
+          } else if (logs.includes("Job succeeded")) {
+            status = "Passed";
+          } else if (logs.includes("Job failed") || logs.match(/✖ Job /)) {
+            status = "Failed";
+          }
+          return { logs, status };
+        } catch {
+          return null;
+        }
       },
     },
   },
@@ -276,7 +450,7 @@ tray.on("tray-clicked", (e: any) => {
 // Create the main application window
 const mainWindow = new BrowserWindow({
   title: "OA Desktop",
-  url: "views://mainview/index.html",
+  url: "views://projects/index.html",
   rpc,
   frame: {
     width: 800,

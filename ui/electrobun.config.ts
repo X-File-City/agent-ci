@@ -8,13 +8,23 @@ export default {
   },
   build: {
     views: {
-      mainview: {
-        entrypoint: "src/mainview/index.ts",
+      projects: {
+        entrypoint: "src/mainview/projects.ts",
+      },
+      commits: {
+        entrypoint: "src/mainview/commits.ts",
+      },
+      workflows: {
+        entrypoint: "src/mainview/workflows.ts",
       },
     },
     copy: {
-      "src/mainview/index.html": "views/mainview/index.html",
-      "src/mainview/index.css": "views/mainview/index.css",
+      "src/mainview/projects.html": "views/projects/index.html",
+      "src/mainview/commits.html": "views/commits/index.html",
+      "src/mainview/workflows.html": "views/workflows/index.html",
+      "src/mainview/projects.css": "views/projects/projects.css",
+      "src/mainview/commits.css": "views/commits/commits.css",
+      "src/mainview/workflows.css": "views/workflows/workflows.css",
       "src/assets/tray.png": "assets/tray.png",
     },
     mac: {

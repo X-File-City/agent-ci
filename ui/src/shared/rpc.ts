@@ -23,9 +23,38 @@ export type MyRPCSchema = {
       };
       runWorkflow: {
         params: { projectPath: string; workflowId: string };
-        response: boolean;
+        response: string | null;
       };
       stopWorkflow: {
+        params: void;
+        response: boolean;
+      };
+      getRunCommits: {
+        params: { projectPath: string };
+        response: { id: string; label: string; date: number }[];
+      };
+      getWorkflowsForCommit: {
+        params: { projectPath: string; commitId: string };
+        response: {
+          runId: string;
+          workflowName: string;
+          status: "Passed" | "Failed" | "Running" | "Unknown";
+          date: number;
+        }[];
+      };
+      getRunDetails: {
+        params: { runId: string };
+        response: { logs: string; status: "Passed" | "Failed" | "Running" | "Unknown" } | null;
+      };
+      getAppState: {
+        params: void;
+        response: { projectPath: string; commitId: string };
+      };
+      setAppState: {
+        params: { projectPath?: string; commitId?: string };
+        response: void;
+      };
+      getDtuStatus: {
         params: void;
         response: boolean;
       };

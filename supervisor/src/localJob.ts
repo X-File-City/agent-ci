@@ -169,6 +169,20 @@ export async function executeLocalJob(job: Job): Promise<void> {
     /* non-fatal */
   });
 
+  // Write metadata if available (to help the UI map logs to workflows)
+  if (job.workflowPath) {
+    const metadataPath = path.join(path.dirname(outputLogPath), "metadata.json");
+    fs.writeFileSync(
+      metadataPath,
+      JSON.stringify(
+        { workflowPath: job.workflowPath, workflowName: path.basename(job.workflowPath) },
+        null,
+        2,
+      ),
+      "utf-8",
+    );
+  }
+
   // Open output stream immediately so header + footer lines are captured in the log
   const outputStream = fs.createWriteStream(outputLogPath);
   const debugStream = fs.createWriteStream(debugLogPath);
