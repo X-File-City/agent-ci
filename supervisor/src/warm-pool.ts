@@ -144,7 +144,7 @@ export class WarmPool {
           ...(job?.localSync
             ? [
                 `OA_LOCAL_SYNC=true`,
-                `PATH=/tmp/oa-shims:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`,
+                `PATH=/tmp/oa-shims:/home/runner/externals/node20/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`,
                 ...(job.headSha ? [`OA_HEAD_SHA=${job.headSha}`] : []),
               ]
             : []),
@@ -153,17 +153,14 @@ export class WarmPool {
         Cmd: [
           "bash",
           "-c",
-          "echo \"DEBUG: GITHUB_SERVER_URL=$GITHUB_SERVER_URL\" && echo 'Testing connectivity...' && curl -v $GITHUB_API_URL || echo 'Curl failed' && GITHUB_SERVER_URL=$RUNNER_REPOSITORY_URL GITHUB_API_URL= ./config.sh --url $RUNNER_REPOSITORY_URL --token $RUNNER_TOKEN --name $RUNNER_NAME --unattended --ephemeral --labels opposite-actions || echo 'Config failed (ignoring)...' && ./run.sh --once",
+          "echo \"DEBUG: GITHUB_SERVER_URL=$GITHUB_SERVER_URL\" && echo 'Testing connectivity...' && curl -v $GITHUB_API_URL || echo 'Curl failed' && GITHUB_SERVER_URL=$RUNNER_REPOSITORY_URL GITHUB_API_URL= ./config.sh --url $RUNNER_REPOSITORY_URL --token $RUNNER_TOKEN --name $RUNNER_NAME --unattended --ephemeral --labels opposite-actions || echo 'Config failed (ignoring)...' && REPO_NAME=$(basename $GITHUB_REPOSITORY) && mkdir -p /home/runner/_work/$REPO_NAME/$REPO_NAME && cp -a /tmp/oa-workspace/. /home/runner/_work/$REPO_NAME/$REPO_NAME/ || true && ./run.sh --once",
         ],
         HostConfig: {
           Binds: [
             `${workDir}:/home/runner/_work`,
             "/var/run/docker.sock:/var/run/docker.sock",
             ...(job?.localSync
-              ? [
-                  `${job.localPath}:/home/runner/_work/${job.githubRepo}/${job.githubRepo}`,
-                  ...(await this.prepareShims(containerName)),
-                ]
+              ? [`${job.localPath}:/tmp/oa-workspace`, ...(await this.prepareShims(containerName))]
               : []),
           ],
           AutoRemove: !job?.localSync, // Keep local sync containers for debugging
@@ -398,15 +395,32 @@ export class WarmPool {
 
     const gitShimPath = path.join(shimsDir, "git");
     const gitShimContent = `#!/bin/bash
-case "$1" in
-  checkout|fetch|reset)
-    echo "[OA Shim] Intercepted '$1' to protect local files."
-    exit 0
-    ;;
-  *)
-    /usr/bin/git "$@"
-    ;;
-esac
+
+# Check if any argument is checkout, fetch, reset, log, clean, or rm
+INTERCEPT=false
+for arg in "$@"; do
+  if [[ "$arg" == "checkout" || "$arg" == "fetch" || "$arg" == "reset" || "$arg" == "log" || "$arg" == "clean" || "$arg" == "rm" ]]; then
+    INTERCEPT=true
+    CMD="$arg"
+    break
+  fi
+done
+
+# Check for fetch URL probing
+if [[ "$*" == *"config --local --get remote.origin.url"* || "$*" == *"config --get remote.origin.url"* ]]; then
+  echo "http://127.0.0.1:80/$GITHUB_REPOSITORY/$GITHUB_REPOSITORY"
+  exit 0
+fi
+
+if [ "$INTERCEPT" = true ]; then
+  echo "[OA Shim] Intercepted '$CMD' to protect local files."
+  if [[ "$CMD" == "log" ]]; then
+    echo "commit 0000000000000000000000000000000000000000"
+  fi
+  exit 0
+else
+  /usr/bin/git "$@"
+fi
 `;
     fs.writeFileSync(gitShimPath, gitShimContent, { mode: 0o755 });
 

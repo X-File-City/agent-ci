@@ -77,6 +77,8 @@ export async function parseWorkflowSteps(filePath: string, taskName: string) {
           ref = parts[1];
         }
 
+        const isCheckout = name.trim().toLowerCase() === "actions/checkout";
+
         return {
           Type: "Action",
           Name: stepName,
@@ -90,7 +92,20 @@ export async function parseWorkflowSteps(filePath: string, taskName: string) {
             Path: "",
           },
           Inputs: {
-            ...(step as any).with, // If we want to support 'with' inputs
+            // with: values from @actions/workflow-parser are expression objects; call toString() on each.
+            ...((step as any).with
+              ? Object.fromEntries(
+                  Object.entries((step as any).with).map(([k, v]) => [k, String(v)]),
+                )
+              : {}),
+            ...(isCheckout
+              ? {
+                  clean: "false",
+                  "fetch-depth": "0",
+                  lfs: "false",
+                  submodules: "false",
+                }
+              : {}), // Prevent actions/checkout from wiping the rsynced workspace
           },
         };
       }

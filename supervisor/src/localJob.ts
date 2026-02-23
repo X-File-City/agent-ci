@@ -204,6 +204,28 @@ export async function executeLocalJob(job: Job): Promise<void> {
   }
   emit(`  └─ Delivery: ${job.deliveryId}\n`);
 
+  // Move workspace prep BEFORE seed to pass localPath
+  const workspaceId = Date.now();
+  const workspaceDir = path.resolve(process.cwd(), "_/work", `workspace-${workspaceId}`);
+  const containerWorkDir = path.resolve(process.cwd(), "_/work", containerName);
+  const shimsDir = path.resolve(process.cwd(), "_/shims", containerName);
+  const diagDir = path.resolve(process.cwd(), "_/diag", containerName);
+
+  fs.mkdirSync(workspaceDir, { recursive: true, mode: 0o777 });
+  fs.mkdirSync(containerWorkDir, { recursive: true, mode: 0o777 });
+  fs.mkdirSync(shimsDir, { recursive: true, mode: 0o777 });
+  fs.mkdirSync(diagDir, { recursive: true, mode: 0o777 });
+  // Ensure all intermediate dirs are world-writable for DinD scenarios where
+  // the supervisor runs as root but nested containers use runner user (UID 1001)
+  try {
+    fs.chmodSync(workspaceDir, 0o777);
+    fs.chmodSync(containerWorkDir, 0o777);
+    fs.chmodSync(shimsDir, 0o777);
+    fs.chmodSync(diagDir, 0o777);
+  } catch {
+    // Ignore chmod errors (non-critical)
+  }
+
   // 1. Seed the job to Local DTU
   const seedResponse = await fetch(`${dtuUrl}/_dtu/seed`, {
     method: "POST",
@@ -212,6 +234,7 @@ export async function executeLocalJob(job: Job): Promise<void> {
       id: job.githubJobId || "1",
       name: "local-job",
       status: "queued",
+      localPath: workspaceDir,
       ...job,
     }),
   });
@@ -222,15 +245,6 @@ export async function executeLocalJob(job: Job): Promise<void> {
   // 2. Registration token (mock for local)
   const registrationToken = "mock_local_token";
 
-  const workspaceId = Date.now();
-  const workspaceDir = path.resolve(process.cwd(), "_/work", `workspace-${workspaceId}`);
-  const shimsDir = path.resolve(process.cwd(), "_/shims", containerName);
-  const diagDir = path.resolve(process.cwd(), "_/diag", containerName);
-
-  fs.mkdirSync(workspaceDir, { recursive: true });
-  fs.mkdirSync(shimsDir, { recursive: true });
-  fs.mkdirSync(diagDir, { recursive: true });
-
   // 4. Prepare workspace (checkout emulation)
   try {
     if (job.headSha && job.headSha !== "HEAD") {
@@ -239,14 +253,46 @@ export async function executeLocalJob(job: Job): Promise<void> {
     } else {
       // Default: copy the working directory as-is, including dirty/untracked files.
       // rsync excludes .git to keep the workspace clean for the runner.
-      execSync(
-        // Let git enumerate exactly which files to copy: tracked files + untracked
-        // files that aren't gitignored. This honours all gitignore rules (global,
-        // nested, negations, .git/info/exclude) because git itself does the filtering.
-        `git ls-files --cached --others --exclude-standard -z | rsync -a --files-from=- --from0 ${process.cwd()}/ ${workspaceDir}/`,
-        { stdio: "pipe", shell: "/bin/sh" },
-      );
+      const repoRoot = execSync(`git rev-parse --show-toplevel`).toString().trim();
+      try {
+        // Preferred: rsync (fast, honours gitignore via git ls-files)
+        execSync(
+          `git ls-files --cached --others --exclude-standard -z | rsync -a --files-from=- --from0 ./ ${workspaceDir}/`,
+          { stdio: "pipe", shell: "/bin/sh", cwd: repoRoot },
+        );
+      } catch {
+        // Fallback: use Node.js fs.cpSync when rsync is not available (e.g. actions-runner image)
+        const files = execSync(`git ls-files --cached --others --exclude-standard -z`, {
+          stdio: "pipe",
+          cwd: repoRoot,
+        })
+          .toString()
+          .split("\0")
+          .filter(Boolean);
+        for (const file of files) {
+          const src = path.join(repoRoot, file);
+          const dest = path.join(workspaceDir, file);
+          try {
+            fs.mkdirSync(path.dirname(dest), { recursive: true });
+            fs.cpSync(src, dest, { force: true, recursive: true });
+          } catch {
+            // Skip files that can't be copied (e.g. symlinks broken, etc.)
+          }
+        }
+      }
     }
+
+    // Add fake git repo so actions/checkout uses fast-path (no delete+reclone)
+    // The remote URL must exactly match what actions/checkout computes via URL.origin.
+    // Node.js URL.origin strips the default port (80), so we must NOT include :80.
+    // Use -b main so the default branch is 'main', matching what actions/checkout expects.
+    execSync(`git init -b main`, { cwd: workspaceDir });
+    execSync(`git config user.name "oa"`, { cwd: workspaceDir });
+    execSync(`git config user.email "oa@example.com"`, { cwd: workspaceDir });
+    execSync(`git remote add origin http://127.0.0.1/${config.GITHUB_REPO}`, {
+      cwd: workspaceDir,
+    });
+    execSync(`git add . && git commit -m "Initial dummy commit" || true`, { cwd: workspaceDir });
   } catch (err) {
     if (debug) {
       console.warn(`[LocalJob] Failed to prepare workspace: ${err}. Using host fallback.`);
@@ -254,33 +300,109 @@ export async function executeLocalJob(job: Job): Promise<void> {
   }
 
   // 5. Git shim
+  // The workspace SHA must match what ls-remote returns so actions/checkout skips re-cloning.
+  // Read the SHA from the workspace git repo (created just above), not from the host repo.
+  let workspaceSha: string;
+  try {
+    workspaceSha = execSync(`git rev-parse HEAD`, { cwd: workspaceDir }).toString().trim();
+  } catch {
+    workspaceSha = "0000000000000000000000000000000000000000";
+  }
+
   const gitShimPath = path.join(shimsDir, "git");
   fs.writeFileSync(
     gitShimPath,
     `#!/bin/bash
-case "$1" in
-  checkout|fetch|reset)
-    echo "[OA Shim] Intercepted '$1' to protect local files."
-    exit 0
-    ;;
-  *)
-    /usr/bin/git "$@"
-    ;;
-esac
+
+# Log every call for debugging
+echo "git $*" >> /home/runner/_diag/oa-git-calls.log
+
+# actions/checkout probes the remote URL via config.
+# It computes the expected URL using URL.origin, which strips the default port 80.
+# So we must return the URL WITHOUT :80 to match.
+if [[ "$*" == *"config --local --get remote.origin.url"* || "$*" == *"config --get remote.origin.url"* ]]; then
+  echo "http://127.0.0.1/\${GITHUB_REPOSITORY}"
+  exit 0
+fi
+
+# actions/checkout probes ls-remote to find the target SHA.
+# Return the workspace's own commit SHA so checkout thinks the workspace is current.
+if [[ "$*" == *"ls-remote"* ]]; then
+  echo "${workspaceSha}\tHEAD"
+  echo "${workspaceSha}\trefs/heads/main"
+  exit 0
+fi
+
+# Intercept fetch - we don't have a real git server, so fetch is a no-op.
+# After fetch, actions/checkout will try: git checkout -B main refs/remotes/origin/main
+# which fails because fetch returned nothing. We intercept that too, and redirect
+# it to the local 'main' branch (which was created by the workspace git init).
+if [[ "$*" == *"fetch"* ]]; then
+  echo "[OA Shim] Intercepted 'fetch' - workspace is pre-populated."
+  exit 0
+fi
+
+# Redirect: git checkout ... refs/remotes/origin/main -> create local main from HEAD.
+# Note: actions/checkout deletes the local 'main' branch before fetching, so we cannot
+# checkout the local branch - instead we recreate it from the current HEAD commit.
+if [[ "$*" == *"checkout"* && "$*" == *"refs/remotes/origin/"* ]]; then
+  echo "[OA Shim] Redirecting remote checkout - recreating main from HEAD."
+  /usr/bin/git checkout -B main HEAD
+  exit $?
+fi
+
+# Intercept clean and rm which can destroy workspace files
+if [[ "$1" == "clean" || "$1" == "rm" ]]; then
+  echo "[OA Shim] Intercepted '$1' to protect local files."
+  exit 0
+fi
+
+# Pass through all other git commands (checkout, reset, log, init, config, etc.)
+echo "git $@ (pass-through)" >> /home/runner/_diag/oa-git-calls.log
+/usr/bin/git "$@"
+EXIT_CODE=$?
+echo "git $@ exited with $EXIT_CODE" >> /home/runner/_diag/oa-git-calls.log
+exit $EXIT_CODE
 `,
     { mode: 0o755 },
   );
 
   // 6. Spawn container
   const dtuPort = new URL(config.GITHUB_API_URL).port || "80";
-  const dockerApiUrl = config.GITHUB_API_URL.replace("localhost", "host.docker.internal").replace(
+  // When running inside a Docker container (CI), nested containers can't reach the host via
+  // `host.docker.internal` — that points to the Mac/host, not the CI container. We need the
+  // CI container's own bridge IP so nested containers can reach the DTU running inside it.
+  const isInsideDocker = fs.existsSync("/.dockerenv");
+  let dtuHost = "host.docker.internal";
+  if (isInsideDocker) {
+    try {
+      // Get the CI container's own IP on the Docker bridge network
+      const ip = execSync("hostname -I 2>/dev/null | awk '{print $1}'", {
+        encoding: "utf8",
+      }).trim();
+      if (ip) {
+        dtuHost = ip;
+      }
+    } catch {
+      dtuHost = "172.17.0.1"; // fallback to bridge gateway
+    }
+  }
+  const dockerApiUrl = config.GITHUB_API_URL.replace("localhost", dtuHost).replace(
     "127.0.0.1",
-    "host.docker.internal",
+    dtuHost,
   );
   const repoUrl = `${dockerApiUrl}/${config.GITHUB_REPO}`;
 
   if (debug) {
     console.log(`[debug] Spawning container ${containerName}...`);
+  }
+
+  // Pre-cleanup: remove any stale container with the same name to prevent 409 conflicts.
+  try {
+    const stale = docker.getContainer(containerName);
+    await stale.remove({ force: true });
+  } catch {
+    // Ignore - container doesn't exist
   }
 
   const container = await docker.createContainer({
@@ -295,12 +417,13 @@ esac
       `GITHUB_REPOSITORY=${config.GITHUB_REPO}`,
       `OA_LOCAL_SYNC=true`,
       `OA_HEAD_SHA=${job.headSha || "HEAD"}`,
-      `PATH=/tmp/oa-shims:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`,
+      `OA_DTU_HOST=${dtuHost}`,
+      `PATH=/tmp/oa-shims:/home/runner/externals/node20/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`,
     ],
     Cmd: [
       "bash",
       "-c",
-      `HOST_IP=$(getent hosts host.docker.internal | awk '{ print $1 }') && export DEBIAN_FRONTEND=noninteractive && sudo -n apt-get update >/dev/null 2>&1 && sudo -n apt-get install -y nginx >/dev/null 2>&1 && echo "server { listen 80 default_server; location / { proxy_pass http://$HOST_IP:${dtuPort}; proxy_set_header Host 127.0.0.1:80; } }" | sudo tee /etc/nginx/sites-available/default > /dev/null && sudo ln -sf /etc/nginx/sites-available/default /etc/nginx/sites-enabled/default && (sudo service nginx start >/dev/null 2>&1 || sudo nginx >/dev/null 2>&1) && RESOLVED_URL="http://127.0.0.1:80/$GITHUB_REPOSITORY" && export GITHUB_API_URL="http://127.0.0.1:80" && export GITHUB_SERVER_URL="$RESOLVED_URL" && ./config.sh --url "$RESOLVED_URL" --token "$RUNNER_TOKEN" --name "$RUNNER_NAME" --unattended --ephemeral --work _work --labels opposite-actions || echo "Config warning: Service generation failed, proceeding..." && ./run.sh --once`,
+      `export DEBIAN_FRONTEND=noninteractive && sudo -n chmod -R 777 /home/runner/_work /home/runner/_diag 2>/dev/null || true && sudo -n apt-get update >/dev/null 2>&1 && sudo -n apt-get install -y nginx >/dev/null 2>&1 && echo "server { listen 80 default_server; location / { proxy_pass http://$OA_DTU_HOST:${dtuPort}; proxy_set_header Host 127.0.0.1:80; } }" | sudo tee /etc/nginx/sites-available/default > /dev/null && sudo ln -sf /etc/nginx/sites-available/default /etc/nginx/sites-enabled/default && (sudo service nginx start >/dev/null 2>&1 || sudo nginx >/dev/null 2>&1) && sudo chmod 666 /var/run/docker.sock 2>/dev/null || true && RESOLVED_URL="http://127.0.0.1:80/$GITHUB_REPOSITORY" && export GITHUB_API_URL="http://127.0.0.1:80" && export GITHUB_SERVER_URL="$RESOLVED_URL" && ./config.sh --url "$RESOLVED_URL" --token "$RUNNER_TOKEN" --name "$RUNNER_NAME" --unattended --ephemeral --work _work --labels opposite-actions || echo "Config warning: Service generation failed, proceeding..." && REPO_NAME=$(basename $GITHUB_REPOSITORY) && WORKSPACE_PATH=/home/runner/_work/$REPO_NAME/$REPO_NAME && mkdir -p $WORKSPACE_PATH && (cp -a /tmp/oa-workspace/. $WORKSPACE_PATH/ 2>/dev/null && echo "Workspace ready: $(ls $WORKSPACE_PATH | wc -l) files" || echo "Workspace copy skipped - no mounted workspace") && ./run.sh --once`,
     ],
     HostConfig: {
       Binds: [
@@ -308,7 +431,7 @@ esac
         "/var/run/docker.sock:/var/run/docker.sock",
         `${shimsDir}:/tmp/oa-shims`,
         `${diagDir}:/home/runner/_diag`,
-        `${workspaceDir}:/home/runner/_work/${config.GITHUB_REPO}`,
+        `${workspaceDir}:/tmp/oa-workspace`,
       ],
       AutoRemove: false,
     },
@@ -415,6 +538,11 @@ esac
   }
 
   // Cleanup
+  try {
+    await container.remove({ force: true });
+  } catch {
+    // Ignore - container may already be removed
+  }
   if (fs.existsSync(workspaceDir)) {
     fs.rmSync(workspaceDir, { recursive: true, force: true });
   }

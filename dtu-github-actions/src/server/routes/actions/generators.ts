@@ -123,7 +123,7 @@ export function createJobResponse(
     server_url: baseUrl,
     api_url: `${baseUrl}/_apis`,
     graphql_url: `${baseUrl}/_graphql`,
-    workspace: "/home/runner/work/opposite-actions/opposite-actions",
+    workspace: "/home/runner/_work/opposite-actions/opposite-actions",
     action: "__run",
     token: "fake-token",
     job: "local-job",
@@ -203,7 +203,7 @@ export function createJobResponse(
       ],
     },
     Workspace: {
-      Path: "/home/runner/work/opposite-actions/opposite-actions",
+      Path: "/home/runner/_work/opposite-actions/opposite-actions",
     },
     SystemVssConnection: {
       Url: baseUrl,

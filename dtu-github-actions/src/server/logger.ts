@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const DTU_ROOT = path.resolve(fileURLToPath(import.meta.url), "..", "..", "..");
-export const DTU_LOGS_DIR = path.join(DTU_ROOT, "_", "logs");
+export const DTU_LOGS_DIR = process.env.DTU_LOGS_DIR ?? path.join(DTU_ROOT, "_", "logs");
 export const DTU_LOG_PATH = path.join(DTU_LOGS_DIR, "dtu-server.log");
 
 let logStream: fs.WriteStream | null = null;
