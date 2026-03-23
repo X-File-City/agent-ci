@@ -46,12 +46,13 @@ DOCKER_HOST=ssh://user@remote-server npx agent-ci run --workflow .github/workflo
 
 Run GitHub Actions workflow jobs locally.
 
-| Flag                 | Short | Description                                                    |
-| -------------------- | ----- | -------------------------------------------------------------- |
-| `--workflow <path>`  | `-w`  | Path to the workflow file                                      |
-| `--all`              | `-a`  | Discover and run all relevant workflows for the current branch |
-| `--pause-on-failure` | `-p`  | Pause on step failure for interactive debugging                |
-| `--quiet`            | `-q`  | Suppress animated rendering (also enabled by `AI_AGENT=1`)     |
+| Flag                 | Short | Description                                                                       |
+| -------------------- | ----- | --------------------------------------------------------------------------------- |
+| `--workflow <path>`  | `-w`  | Path to the workflow file                                                         |
+| `--all`              | `-a`  | Discover and run all relevant workflows for the current branch                    |
+| `--pause-on-failure` | `-p`  | Pause on step failure for interactive debugging                                   |
+| `--quiet`            | `-q`  | Suppress animated rendering (also enabled by `AI_AGENT=1`)                        |
+| `--no-matrix`        |       | Collapse all matrix combinations into a single job (uses first value of each key) |
 
 ### `agent-ci retry`
 
