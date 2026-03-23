@@ -1,5 +1,16 @@
 # @redwoodjs/agent-ci
 
+## 0.4.0
+
+### Minor Changes
+
+- 61d3e25: Add --no-matrix flag to collapse matrix workflows into a single job.
+
+### Patch Changes
+
+- Updated dependencies [61d3e25]
+  - dtu-github-actions@0.4.0
+
 ## 0.3.4
 
 ### Patch Changes
