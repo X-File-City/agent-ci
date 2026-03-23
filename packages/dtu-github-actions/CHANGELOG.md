@@ -1,5 +1,11 @@
 # dtu-github-actions
 
+## 0.4.0
+
+### Minor Changes
+
+- 61d3e25: Add --no-matrix flag to collapse matrix workflows into a single job.
+
 ## 0.3.4
 
 ## 0.3.3
