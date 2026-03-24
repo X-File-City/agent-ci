@@ -167,7 +167,9 @@ export function buildContainerCmd(opts: ContainerCmdOpts): string[] {
 // ─── DTU host resolution ──────────────────────────────────────────────────────
 
 import fs from "fs";
+import dns from "node:dns/promises";
 import { execSync } from "child_process";
+import { debugRunner } from "../output/debug.js";
 
 const DEFAULT_DTU_HOST_ALIAS = "host.docker.internal";
 const DEFAULT_DOCKER_BRIDGE_GATEWAY = "172.17.0.1";
@@ -180,7 +182,7 @@ function parseCsvEnv(value: string): string[] {
     .filter(Boolean);
 }
 
-export function resolveDtuHost(): string {
+export async function resolveDtuHost(): Promise<string> {
   const configuredHost = process.env.AGENT_CI_DTU_HOST?.trim();
   if (configuredHost) {
     return configuredHost;
@@ -195,11 +197,24 @@ export function resolveDtuHost(): string {
       if (ip) {
         return ip;
       }
-    } catch {}
+    } catch (error: unknown) {
+      debugRunner(`Failed to resolve Docker bridge IP via hostname -I: ${String(error)}`);
+    }
+
     return process.env.AGENT_CI_DOCKER_BRIDGE_GATEWAY?.trim() || DEFAULT_DOCKER_BRIDGE_GATEWAY;
   }
 
-  return DEFAULT_DTU_HOST_ALIAS;
+  try {
+    await dns.lookup(DEFAULT_DTU_HOST_ALIAS);
+    return DEFAULT_DTU_HOST_ALIAS;
+  } catch (error: unknown) {
+    const fallbackGateway =
+      process.env.AGENT_CI_DOCKER_BRIDGE_GATEWAY?.trim() || DEFAULT_DOCKER_BRIDGE_GATEWAY;
+    debugRunner(
+      `DTU host alias '${DEFAULT_DTU_HOST_ALIAS}' is unavailable, falling back to '${fallbackGateway}': ${String(error)}`,
+    );
+    return fallbackGateway;
+  }
 }
 
 export function resolveDockerExtraHosts(dtuHost: string): string[] | undefined {

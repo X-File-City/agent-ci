@@ -1,4 +1,10 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
+import fs from "node:fs";
+import dns from "node:dns/promises";
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 // ── buildContainerEnv ─────────────────────────────────────────────────────────
 
@@ -164,6 +170,38 @@ describe("resolveDockerApiUrl", () => {
     expect(resolveDockerApiUrl("https://localhost", "host.docker.internal")).toBe(
       "https://host.docker.internal",
     );
+  });
+});
+
+describe("resolveDtuHost", () => {
+  it("uses host alias when available outside Docker", async () => {
+    const { resolveDtuHost } = await import("./container-config.js");
+    const originalExistsSync = fs.existsSync;
+
+    vi.spyOn(fs, "existsSync").mockImplementation((filePath: fs.PathLike) => {
+      if (filePath === "/.dockerenv") {
+        return false;
+      }
+      return originalExistsSync(filePath);
+    });
+    vi.spyOn(dns, "lookup").mockResolvedValue({ address: "127.0.0.1", family: 4 });
+
+    await expect(resolveDtuHost()).resolves.toBe("host.docker.internal");
+  });
+
+  it("falls back to bridge gateway when host alias is unavailable", async () => {
+    const { resolveDtuHost } = await import("./container-config.js");
+    const originalExistsSync = fs.existsSync;
+
+    vi.spyOn(fs, "existsSync").mockImplementation((filePath: fs.PathLike) => {
+      if (filePath === "/.dockerenv") {
+        return false;
+      }
+      return originalExistsSync(filePath);
+    });
+    vi.spyOn(dns, "lookup").mockRejectedValue(new Error("ENOTFOUND"));
+
+    await expect(resolveDtuHost()).resolves.toBe("172.17.0.1");
   });
 });
 

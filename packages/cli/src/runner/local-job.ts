@@ -280,7 +280,7 @@ export async function executeLocalJob(
     })();
 
     // 6. Spawn container
-    const dtuHost = resolveDtuHost();
+    const dtuHost = await resolveDtuHost();
     const dockerApiUrl = resolveDockerApiUrl(dtuContainerUrl, dtuHost);
     const parsedDockerApiUrl = new URL(dockerApiUrl);
     const dtuPort =
