@@ -114,6 +114,12 @@ Agent CI connects to Docker via `DOCKER_HOST`. By default it uses the local sock
 DOCKER_HOST=ssh://user@remote-server npx agent-ci run --workflow .github/workflows/ci.yml
 ```
 
+### Docker host resolution for job containers
+
+For default behavior, env overrides, and remote-daemon caveats, see the CLI package docs:
+
+- [`packages/cli/README.md#docker-host-resolution-for-job-containers`](./packages/cli/README.md#docker-host-resolution-for-job-containers)
+
 ---
 
 ## YAML compatibility

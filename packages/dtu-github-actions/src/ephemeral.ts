@@ -3,11 +3,18 @@ import { setCacheDir } from "./server/store.js";
 import { bootstrapAndReturnApp } from "./server/index.js";
 
 export interface EphemeralDtu {
-  /** Full URL including port, e.g. "http://127.0.0.1:49823" */
+  /** Full URL including port for CLI access (127.0.0.1), e.g. "http://127.0.0.1:49823" */
   url: string;
+  /** Full URL including port for container access (host IP), e.g. "http://172.17.0.1:49823" */
+  containerUrl: string;
   port: number;
   /** Shut down the ephemeral DTU server. */
   close(): Promise<void>;
+}
+
+function resolveContainerHost(): string {
+  const configuredHost = process.env.AGENT_CI_DTU_HOST?.trim();
+  return configuredHost || "host.docker.internal";
 }
 
 /**
@@ -44,10 +51,14 @@ export async function startEphemeralDtu(cacheDir: string): Promise<EphemeralDtu>
     server.on("error", reject);
   });
 
-  const url = `http://127.0.0.1:${port}`;
+  // Use 127.0.0.1 for CLI access (same host) and host IP for container access
+  const containerHost = resolveContainerHost();
+  const cliUrl = `http://127.0.0.1:${port}`;
+  const containerUrl = `http://${containerHost}:${port}`;
 
   return {
-    url,
+    url: cliUrl,
+    containerUrl,
     port,
     close(): Promise<void> {
       return new Promise((resolve) => {

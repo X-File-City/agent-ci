@@ -29,6 +29,7 @@ import {
   buildContainerCmd,
   resolveDtuHost,
   resolveDockerApiUrl,
+  resolveDockerExtraHosts,
 } from "../docker/container-config.js";
 import { buildJobResult, sanitizeStepName } from "./result-builder.js";
 import { wrapJobSteps, appendOutputCaptureStep } from "./step-wrapper.js";
@@ -155,8 +156,18 @@ export async function executeLocalJob(
   // own isolated DTU instance on a random port — eliminating port conflicts.
   let t0 = Date.now();
   const dtuCacheDir = path.resolve(getWorkingDirectory(), "cache", "dtu");
-  const ephemeralDtu = await startEphemeralDtu(dtuCacheDir).catch(() => null);
+  let ephemeralDtu: Awaited<ReturnType<typeof startEphemeralDtu>> | null = null;
+  try {
+    ephemeralDtu = await startEphemeralDtu(dtuCacheDir);
+    debugRunner(
+      `DTU server started - CLI URL: ${ephemeralDtu.url}, Container URL: ${ephemeralDtu.containerUrl}`,
+    );
+  } catch (e) {
+    debugRunner(`Failed to start ephemeral DTU: ${e}`);
+  }
+  // CLI uses url (127.0.0.1), containers use containerUrl (host IP)
   const dtuUrl = ephemeralDtu?.url ?? config.GITHUB_API_URL;
+  const dtuContainerUrl = ephemeralDtu?.containerUrl ?? dtuUrl;
   t0 = bt("dtu-start", t0);
 
   await fetch(`${dtuUrl}/_dtu/start-runner`, {
@@ -269,13 +280,17 @@ export async function executeLocalJob(
     })();
 
     // 6. Spawn container
-    const dtuPort = new URL(dtuUrl).port || "80";
-    const dtuHost = resolveDtuHost();
-    const dockerApiUrl = resolveDockerApiUrl(dtuUrl, dtuHost);
+    const dtuHost = await resolveDtuHost();
+    const dockerApiUrl = resolveDockerApiUrl(dtuContainerUrl, dtuHost);
+    const parsedDockerApiUrl = new URL(dockerApiUrl);
+    const dtuPort =
+      parsedDockerApiUrl.port || (parsedDockerApiUrl.protocol === "https:" ? "443" : "80");
     const githubRepo = job.githubRepo || config.GITHUB_REPO;
     const repoUrl = `${dockerApiUrl}/${githubRepo}`;
 
     debugRunner(`Spawning container ${containerName}...`);
+    debugRunner(`DTU config - Port: ${dtuPort}, Host: ${dtuHost}, Docker API: ${dockerApiUrl}`);
+    debugRunner(`Runner will connect to: ${repoUrl}`);
 
     // Pre-cleanup: remove any stale container with the same name
     try {
@@ -397,6 +412,8 @@ export async function executeLocalJob(
       containerName,
     });
 
+    const extraHosts = resolveDockerExtraHosts(dtuHost);
+
     t0 = Date.now();
     const container = await docker.createContainer({
       Image: containerImage,
@@ -409,6 +426,7 @@ export async function executeLocalJob(
         AutoRemove: false,
         Ulimits: [{ Name: "nofile", Soft: 65536, Hard: 65536 }],
         ...(serviceCtx ? { NetworkMode: serviceCtx.networkName } : {}),
+        ...(extraHosts ? { ExtraHosts: extraHosts } : {}),
       },
       Tty: true,
     });

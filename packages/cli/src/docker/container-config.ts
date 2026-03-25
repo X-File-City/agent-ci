@@ -168,33 +168,91 @@ export function buildContainerCmd(opts: ContainerCmdOpts): string[] {
 
 import fs from "fs";
 import { execSync } from "child_process";
+import { debugRunner } from "../output/debug.js";
 
-/**
- * Resolve the DTU host address that nested Docker containers can reach.
- * Inside Docker: use the container's own bridge IP.
- * On host: use `host.docker.internal`.
- */
-export function resolveDtuHost(): string {
-  const isInsideDocker = fs.existsSync("/.dockerenv");
-  if (!isInsideDocker) {
-    return "host.docker.internal";
+const DEFAULT_DTU_HOST_ALIAS = "host.docker.internal";
+const DEFAULT_DOCKER_BRIDGE_GATEWAY = "172.17.0.1";
+const DEFAULT_DOCKER_HOST_GATEWAY = "host-gateway";
+
+function isLoopbackHostname(hostname: string): boolean {
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+}
+
+function parseCsvEnv(value: string): string[] {
+  return value
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+export async function resolveDtuHost(): Promise<string> {
+  const configuredHost = process.env.AGENT_CI_DTU_HOST?.trim();
+  if (configuredHost) {
+    return configuredHost;
   }
-  try {
-    const ip = execSync("hostname -I 2>/dev/null | awk '{print $1}'", {
-      encoding: "utf8",
-    }).trim();
-    if (ip) {
-      return ip;
+
+  const isInsideDocker = fs.existsSync("/.dockerenv");
+  if (isInsideDocker) {
+    try {
+      const ip = execSync("hostname -I 2>/dev/null | awk '{print $1}'", {
+        encoding: "utf8",
+      }).trim();
+      if (ip) {
+        return ip;
+      }
+    } catch (error: unknown) {
+      debugRunner(`Failed to resolve Docker bridge IP via hostname -I: ${String(error)}`);
     }
-  } catch {}
-  return "172.17.0.1"; // fallback to bridge gateway
+
+    return process.env.AGENT_CI_DOCKER_BRIDGE_GATEWAY?.trim() || DEFAULT_DOCKER_BRIDGE_GATEWAY;
+  }
+
+  const configuredGateway = process.env.AGENT_CI_DOCKER_BRIDGE_GATEWAY?.trim();
+  if (configuredGateway) {
+    debugRunner(
+      `Using configured bridge gateway '${configuredGateway}' for DTU host outside Docker`,
+    );
+    return configuredGateway;
+  }
+
+  return DEFAULT_DTU_HOST_ALIAS;
+}
+
+export function resolveDockerExtraHosts(dtuHost: string): string[] | undefined {
+  const configuredExtraHosts = process.env.AGENT_CI_DOCKER_EXTRA_HOSTS;
+  if (configuredExtraHosts !== undefined) {
+    const parsed = parseCsvEnv(configuredExtraHosts);
+    return parsed.length > 0 ? parsed : undefined;
+  }
+
+  if (process.env.AGENT_CI_DOCKER_DISABLE_DEFAULT_EXTRA_HOSTS === "1") {
+    return undefined;
+  }
+
+  if (dtuHost !== DEFAULT_DTU_HOST_ALIAS) {
+    return undefined;
+  }
+
+  const gateway = process.env.AGENT_CI_DOCKER_HOST_GATEWAY?.trim() || DEFAULT_DOCKER_HOST_GATEWAY;
+  return [`${DEFAULT_DTU_HOST_ALIAS}:${gateway}`];
 }
 
 /**
  * Rewrite a DTU URL to be reachable from inside Docker containers.
  */
 export function resolveDockerApiUrl(dtuUrl: string, dtuHost: string): string {
-  return dtuUrl.replace("localhost", dtuHost).replace("127.0.0.1", dtuHost);
+  const parsed = new URL(dtuUrl);
+
+  if (isLoopbackHostname(parsed.hostname)) {
+    parsed.hostname = dtuHost;
+  }
+
+  const serialized = parsed.toString();
+  if (parsed.pathname === "/" && !parsed.search && !parsed.hash && serialized.endsWith("/")) {
+    return serialized.slice(0, -1);
+  }
+
+  return serialized;
 }
 
 // ─── Docker-outside-of-Docker path translation ──────────────────────────────
