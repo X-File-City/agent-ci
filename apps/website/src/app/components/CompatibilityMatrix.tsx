@@ -1,7 +1,3 @@
-"use client";
-
-import { useState } from "react";
-
 const LEGEND = [
   { icon: "✅", label: "Supported" },
   { icon: "⚠️", label: "Partial" },
@@ -193,13 +189,10 @@ const SECTIONS: { label: string; rows: Row[] }[] = [
 ];
 
 export function CompatibilityMatrix() {
-  const [activeTab, setActiveTab] = useState(0);
-  const section = SECTIONS[activeTab];
-
   return (
-    <div>
+    <div className="space-y-10">
       {/* Legend */}
-      <div className="flex flex-wrap gap-4 mb-6 text-xs font-mono text-[#71a792]">
+      <div className="flex flex-wrap gap-4 text-xs font-mono text-[#71a792]">
         {LEGEND.map(({ icon, label }) => (
           <span key={label} className="flex items-center gap-1.5">
             <span>{icon}</span>
@@ -208,53 +201,42 @@ export function CompatibilityMatrix() {
         ))}
       </div>
 
-      {/* Tabs */}
-      <div className="flex flex-wrap gap-1 mb-0 border-b border-[#2b483e]">
-        {SECTIONS.map((s, i) => (
-          <button
-            key={s.label}
-            onClick={() => setActiveTab(i)}
-            className={`px-4 py-2 font-mono text-xs uppercase tracking-wider transition-colors rounded-t-sm ${
-              activeTab === i
-                ? "bg-[#161b18] border border-b-0 border-[#3f6f5e] text-[#e0eee5]"
-                : "text-[#71a792] hover:text-[#9bc5b3]"
-            }`}
-          >
-            {s.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Table */}
-      <div className="overflow-x-auto border border-t-0 border-[#2b483e] bg-[#0d110f]">
-        <table className="w-full text-left border-collapse">
-          <thead>
-            <tr className="border-b border-[#34594c] bg-[#12211c]">
-              <th className="py-3 px-4 font-mono text-xs text-[#71a792] uppercase tracking-wider w-1/2">
-                Key
-              </th>
-              <th className="py-3 px-4 font-mono text-xs text-[#71a792] uppercase tracking-wider w-16">
-                Status
-              </th>
-              <th className="py-3 px-4 font-mono text-xs text-[#71a792] uppercase tracking-wider">
-                Notes
-              </th>
-            </tr>
-          </thead>
-          <tbody className="text-sm">
-            {section.rows.map((row, i) => (
-              <tr
-                key={i}
-                className="border-b border-[#1a2822] hover:bg-[#12211c] transition-colors"
-              >
-                <td className="py-3 px-4 font-mono text-[#c2ddd0] text-xs">{row.key}</td>
-                <td className="py-3 px-4 text-center text-base">{row.status}</td>
-                <td className="py-3 px-4 text-[#71a792] text-xs">{row.notes || ""}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      {SECTIONS.map((section) => (
+        <div key={section.label}>
+          <h2 className="font-mono text-xs uppercase tracking-wider text-[#e0eee5] mb-0 px-4 py-2 bg-[#12211c] border border-b-0 border-[#2b483e] inline-block">
+            {section.label}
+          </h2>
+          <div className="overflow-x-auto border border-[#2b483e] bg-[#0d110f]">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="border-b border-[#34594c] bg-[#12211c]">
+                  <th className="py-3 px-4 font-mono text-xs text-[#71a792] uppercase tracking-wider w-1/2">
+                    Key
+                  </th>
+                  <th className="py-3 px-4 font-mono text-xs text-[#71a792] uppercase tracking-wider w-16">
+                    Status
+                  </th>
+                  <th className="py-3 px-4 font-mono text-xs text-[#71a792] uppercase tracking-wider">
+                    Notes
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="text-sm">
+                {section.rows.map((row, i) => (
+                  <tr
+                    key={i}
+                    className="border-b border-[#1a2822] hover:bg-[#12211c] transition-colors"
+                  >
+                    <td className="py-3 px-4 font-mono text-[#c2ddd0] text-xs">{row.key}</td>
+                    <td className="py-3 px-4 text-center text-base">{row.status}</td>
+                    <td className="py-3 px-4 text-[#71a792] text-xs">{row.notes || ""}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
