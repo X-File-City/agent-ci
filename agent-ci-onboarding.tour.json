@@ -1,0 +1,321 @@
+{
+  "id": "agent-ci-onboarding",
+  "title": "Agent CI Onboarding Tour",
+  "description": "Explore the architecture of Agent CI, a local GitHub Actions runner built for AI coding agents. Learn how the CLI, mock API server, and website work together.",
+  "version": "1.0.0",
+  "audience": "New Contributors & AI Assistants",
+  "prerequisites": [
+    "Basic familiarity with GitHub Actions",
+    "Understanding of TypeScript and Node.js",
+    "Docker fundamentals"
+  ],
+  "steps": [
+    {
+      "id": "step-1-overview",
+      "title": "Welcome to Agent CI",
+      "description": "Agent CI is a monorepo with two published packages and a marketing website. The top-level layout follows a standard pnpm workspace: packages holds the core libraries, apps holds the website, and experiments contains proofs-of-concept. Configuration and shared tooling live at the root.",
+      "estimatedTime": 60,
+      "focusDirectory": "",
+      "colorMode": "fileTypes",
+      "interactiveActions": [
+        {
+          "type": "hover-directory",
+          "description": "Hover over packages to see the two core packages",
+          "target": "packages"
+        },
+        {
+          "type": "click-file",
+          "description": "Click package.json to see the monorepo scripts",
+          "target": "package.json"
+        }
+      ]
+    },
+    {
+      "id": "step-2-cli-entry",
+      "title": "CLI Package: The Heart of Agent CI",
+      "description": "The CLI package is the main entry point and what users install to run GitHub Actions locally. The highlighted files handle command parsing for run, retry, and abort, environment and repo detection, and core type definitions.",
+      "estimatedTime": 90,
+      "focusDirectory": "packages/cli/src",
+      "colorMode": "fileTypes",
+      "highlightLayers": [
+        {
+          "id": "cli-entry-points",
+          "name": "CLI Entry Points",
+          "color": "#3b82f6",
+          "items": [
+            { "path": "packages/cli/src/cli.ts", "type": "file" },
+            { "path": "packages/cli/src/config.ts", "type": "file" },
+            { "path": "packages/cli/src/types.ts", "type": "file" }
+          ],
+          "opacity": 0.8,
+          "renderStrategy": "fill"
+        }
+      ],
+      "interactiveActions": [
+        {
+          "type": "click-file",
+          "description": "Click the main executable to see the command orchestration",
+          "target": "packages/cli/src/cli.ts"
+        }
+      ]
+    },
+    {
+      "id": "step-3-runner",
+      "title": "Runner: Job Execution Engine",
+      "description": "This is where jobs actually execute. The core orchestrator (highlighted in red) manages Docker containers, step execution, and pause-on-failure. Supporting modules (highlighted in yellow) handle git command interception to work against a local working tree, workspace management, retry synchronization, and job metadata.",
+      "estimatedTime": 120,
+      "focusDirectory": "packages/cli/src/runner",
+      "colorMode": "fileTypes",
+      "highlightLayers": [
+        {
+          "id": "runner-core",
+          "name": "Core Execution",
+          "color": "#ef4444",
+          "items": [
+            { "path": "packages/cli/src/runner/local-job.ts", "type": "file" },
+            { "path": "packages/cli/src/runner/step-wrapper.ts", "type": "file" }
+          ],
+          "opacity": 0.8,
+          "renderStrategy": "fill"
+        },
+        {
+          "id": "runner-support",
+          "name": "Supporting Modules",
+          "color": "#f59e0b",
+          "items": [
+            { "path": "packages/cli/src/runner/git-shim.ts", "type": "file" },
+            { "path": "packages/cli/src/runner/workspace.ts", "type": "file" },
+            { "path": "packages/cli/src/runner/sync.ts", "type": "file" },
+            { "path": "packages/cli/src/runner/metadata.ts", "type": "file" }
+          ],
+          "opacity": 0.6,
+          "renderStrategy": "border"
+        }
+      ],
+      "interactiveActions": [
+        {
+          "type": "click-file",
+          "description": "Click the core orchestrator to see the largest file in the codebase",
+          "target": "packages/cli/src/runner/local-job.ts"
+        }
+      ]
+    },
+    {
+      "id": "step-4-workflow-docker",
+      "title": "Workflow Parsing & Docker Management",
+      "description": "Two critical subsystems sit alongside the runner. The workflow layer (in purple) parses GitHub Actions YAML, resolves job dependencies via topological sort, and expands matrix strategies. The Docker layer (in cyan) manages container lifecycle: configuration, service containers like databases, and cleanup on shutdown.",
+      "estimatedTime": 90,
+      "focusDirectory": "packages/cli/src",
+      "colorMode": "fileTypes",
+      "highlightLayers": [
+        {
+          "id": "workflow-layer",
+          "name": "Workflow Parsing",
+          "color": "#8b5cf6",
+          "items": [
+            { "path": "packages/cli/src/workflow", "type": "directory" }
+          ],
+          "opacity": 0.7,
+          "renderStrategy": "border"
+        },
+        {
+          "id": "docker-layer",
+          "name": "Docker Management",
+          "color": "#06b6d4",
+          "items": [
+            { "path": "packages/cli/src/docker", "type": "directory" }
+          ],
+          "opacity": 0.7,
+          "renderStrategy": "border"
+        }
+      ],
+      "interactiveActions": [
+        {
+          "type": "hover-directory",
+          "description": "Hover over the workflow layer to see the parser and scheduler",
+          "target": "packages/cli/src/workflow"
+        },
+        {
+          "type": "hover-directory",
+          "description": "Hover over the Docker layer to see container management",
+          "target": "packages/cli/src/docker"
+        }
+      ]
+    },
+    {
+      "id": "step-5-output",
+      "title": "Terminal UI & Output System",
+      "description": "This layer handles everything the user sees in the terminal. The highlighted files draw the live UI, manage in-memory run state, and provide a quiet mode for AI agents. Other modules in this directory handle concurrency limiting, structured logging, and summary reporting.",
+      "estimatedTime": 90,
+      "focusDirectory": "packages/cli/src/output",
+      "colorMode": "fileTypes",
+      "highlightLayers": [
+        {
+          "id": "output-rendering",
+          "name": "Rendering & State",
+          "color": "#10b981",
+          "items": [
+            { "path": "packages/cli/src/output/state-renderer.ts", "type": "file" },
+            { "path": "packages/cli/src/output/run-state.ts", "type": "file" },
+            { "path": "packages/cli/src/output/agent-mode.ts", "type": "file" }
+          ],
+          "opacity": 0.8,
+          "renderStrategy": "fill"
+        }
+      ],
+      "interactiveActions": [
+        {
+          "type": "click-file",
+          "description": "Click the agent mode file to see how AI agent output works",
+          "target": "packages/cli/src/output/agent-mode.ts"
+        }
+      ]
+    },
+    {
+      "id": "step-6-dtu",
+      "title": "DTU: The Mock GitHub API Server",
+      "description": "The Digital Twin Universe is a standalone HTTP server that emulates GitHub's API surface. It handles cache storage via local bind-mounts for near-instant caching, artifact upload and download, and GitHub API stubs. The highlighted server core (in orange) manages startup and in-memory state, while the routes layer (in pink) organizes dedicated handlers for caching, artifacts, and GitHub endpoints.",
+      "estimatedTime": 120,
+      "focusDirectory": "packages/dtu-github-actions/src",
+      "colorMode": "fileTypes",
+      "highlightLayers": [
+        {
+          "id": "dtu-server",
+          "name": "Server Core",
+          "color": "#f97316",
+          "items": [
+            { "path": "packages/dtu-github-actions/src/server/start.ts", "type": "file" },
+            { "path": "packages/dtu-github-actions/src/server/index.ts", "type": "file" },
+            { "path": "packages/dtu-github-actions/src/server/store.ts", "type": "file" }
+          ],
+          "opacity": 0.8,
+          "renderStrategy": "fill"
+        },
+        {
+          "id": "dtu-routes",
+          "name": "API Routes",
+          "color": "#ec4899",
+          "items": [
+            { "path": "packages/dtu-github-actions/src/server/routes", "type": "directory" }
+          ],
+          "opacity": 0.7,
+          "renderStrategy": "border"
+        }
+      ],
+      "interactiveActions": [
+        {
+          "type": "hover-directory",
+          "description": "Hover over the routes layer to see the cache, artifacts, and GitHub API handlers",
+          "target": "packages/dtu-github-actions/src/server/routes"
+        }
+      ]
+    },
+    {
+      "id": "step-7-website",
+      "title": "Marketing Website",
+      "description": "The marketing website is a React 19 app deployed to Cloudflare Workers. It features a hero section with terminal emulator demos, a compatibility matrix showing supported GitHub Actions features, and a panel-based layout built with Tailwind CSS.",
+      "estimatedTime": 60,
+      "focusDirectory": "apps/website/src/app",
+      "colorMode": "fileTypes",
+      "highlightLayers": [
+        {
+          "id": "website-pages",
+          "name": "Pages",
+          "color": "#14b8a6",
+          "items": [
+            { "path": "apps/website/src/app/pages", "type": "directory" }
+          ],
+          "opacity": 0.7,
+          "renderStrategy": "border"
+        },
+        {
+          "id": "website-components",
+          "name": "Components",
+          "color": "#a855f7",
+          "items": [
+            { "path": "apps/website/src/app/components", "type": "directory" }
+          ],
+          "opacity": 0.7,
+          "renderStrategy": "border"
+        }
+      ],
+      "interactiveActions": [
+        {
+          "type": "click-file",
+          "description": "Click the landing page to see the home content",
+          "target": "apps/website/src/app/pages/home.tsx"
+        }
+      ]
+    },
+    {
+      "id": "step-8-ci-and-release",
+      "title": "CI/CD & Release Pipeline",
+      "description": "The project dogfoods itself with GitHub Actions workflows (highlighted in red). One workflow runs typechecking and tests, another does end-to-end validation covering matrix strategies, caching, artifacts, and services, and a third uses changesets for automated versioning and npm publishing. Every PR requires a changeset (highlighted in green) to keep the two packages versioned together.",
+      "estimatedTime": 60,
+      "focusDirectory": "",
+      "colorMode": "fileTypes",
+      "highlightLayers": [
+        {
+          "id": "ci-workflows",
+          "name": "CI Workflows",
+          "color": "#f43f5e",
+          "items": [
+            { "path": ".github/workflows", "type": "directory" }
+          ],
+          "opacity": 0.7,
+          "renderStrategy": "border"
+        },
+        {
+          "id": "changeset-config",
+          "name": "Changeset Config",
+          "color": "#84cc16",
+          "items": [
+            { "path": ".changeset", "type": "directory" }
+          ],
+          "opacity": 0.7,
+          "renderStrategy": "border"
+        }
+      ],
+      "interactiveActions": [
+        {
+          "type": "hover-directory",
+          "description": "Hover over the workflows directory to see all CI pipelines",
+          "target": ".github/workflows"
+        }
+      ],
+      "resources": [
+        {
+          "title": "Release Process Documentation",
+          "url": "RELEASING.md",
+          "type": "documentation"
+        }
+      ]
+    },
+    {
+      "id": "step-9-full-picture",
+      "title": "The Full Picture",
+      "description": "You've now seen the complete Agent CI architecture: the CLI parses workflows and orchestrates Docker containers, the DTU server emulates GitHub's API for caching and artifacts, and the website markets the product. Data flows from workflow definitions through the parser, into the job scheduler, through Docker execution with the DTU providing API emulation, and back out through the terminal renderer. Happy contributing!",
+      "estimatedTime": 30,
+      "focusDirectory": "",
+      "colorMode": "fileTypes",
+      "interactiveActions": [
+        {
+          "type": "explore",
+          "description": "Explore the codebase freely - click any building to dive deeper!"
+        }
+      ],
+      "resources": [
+        {
+          "title": "README",
+          "url": "README.md",
+          "type": "documentation"
+        }
+      ]
+    }
+  ],
+  "metadata": {
+    "author": "Claude Code",
+    "createdAt": "2026-03-27",
+    "tags": ["onboarding", "architecture", "monorepo", "ci-cd"]
+  }
+}
