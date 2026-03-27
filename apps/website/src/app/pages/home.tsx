@@ -234,7 +234,7 @@ export const Home = () => {
             </div>
 
             <div className="grid md:grid-cols-2 gap-6">
-              <Panel title="xcancel.com/jessmartin" className="bg-[#12211c]">
+              <Panel title="x.com/jessmartin" className="bg-[#12211c]">
                 <Quote className="text-[#34594c] mb-4" size={32} />
                 <p className="text-[#e0eee5] text-xl leading-relaxed mb-6 font-serif">
                   "Waiting for CI could be the subtitle of the book of the last 3 weeks of my life
@@ -255,7 +255,7 @@ export const Home = () => {
                 </div>
               </Panel>
 
-              <Panel title="xcancel.com/ericclemmons" className="bg-[#12211c]">
+              <Panel title="x.com/ericclemmons" className="bg-[#12211c]">
                 <Quote className="text-[#34594c] mb-4" size={32} />
                 <p className="text-[#e0eee5] text-xl leading-relaxed mb-6 font-serif">
                   "An alternative to Act for AI? I'll take it!"
@@ -274,14 +274,14 @@ export const Home = () => {
                 </div>
               </Panel>
 
-              <Panel title="xcancel.com/cyrusnewday" className="bg-[#12211c]">
+              <Panel title="x.com/cyrusnewday" className="bg-[#12211c]">
                 <Quote className="text-[#34594c] mb-4" size={32} />
                 <p className="text-[#e0eee5] text-xl leading-relaxed mb-6 font-serif">
                   "Clever dude!"
                 </p>
                 <div className="flex items-center gap-3">
                   <img
-                    src="https://unavatar.io/twitter/cyrusnewday"
+                    src="https://unavatar.io/x/cyrusnewday"
                     alt="Cyrus"
                     className="w-10 h-10 rounded-full border border-[#3f6f5e]"
                     referrerPolicy="no-referrer"
@@ -293,14 +293,14 @@ export const Home = () => {
                 </div>
               </Panel>
 
-              <Panel title="xcancel.com/chriszeuch" className="bg-[#12211c]">
+              <Panel title="x.com/chriszeuch" className="bg-[#12211c]">
                 <Quote className="text-[#34594c] mb-4" size={32} />
                 <p className="text-[#e0eee5] text-xl leading-relaxed mb-6 font-serif">
                   "Okay this is awesome"
                 </p>
                 <div className="flex items-center gap-3">
                   <img
-                    src="https://unavatar.io/twitter/chriszeuch"
+                    src="https://unavatar.io/x/chriszeuch"
                     alt="Chris"
                     className="w-10 h-10 rounded-full border border-[#3f6f5e]"
                     referrerPolicy="no-referrer"
@@ -312,14 +312,14 @@ export const Home = () => {
                 </div>
               </Panel>
 
-              <Panel title="xcancel.com/EastlondonDev" className="bg-[#12211c]">
+              <Panel title="x.com/EastlondonDev" className="bg-[#12211c]">
                 <Quote className="text-[#34594c] mb-4" size={32} />
                 <p className="text-[#e0eee5] text-xl leading-relaxed mb-6 font-serif">
                   "I like the look of what you're cooking here 👀"
                 </p>
                 <div className="flex items-center gap-3">
                   <img
-                    src="https://unavatar.io/twitter/EastlondonDev"
+                    src="https://unavatar.io/x/EastlondonDev"
                     alt="Andrew Jefferson"
                     className="w-10 h-10 rounded-full border border-[#3f6f5e]"
                     referrerPolicy="no-referrer"
